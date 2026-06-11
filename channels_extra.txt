@@ -1,0 +1,15 @@
+# Extra channels — loaded automatically by section 3 of the notebook.
+# One per line:   username, category      (the @ is optional)
+# Lines starting with # are ignored. Unknown categories are kept as-is.
+#
+# Valid categories:
+#   jobs_il jobs_abroad jobs_it freelance translation field_work
+#   photo_video help_offers trips_travel yad2 marketplace furniture
+#   crypto_exchange rides tutoring
+#
+# Paste the channels from your list below, e.g.:
+#   rabotaisraeli, jobs_il
+#   izrail_avito, marketplace
+#   freelancim, freelance
+#   obmen_valut_israel, crypto_exchange
+

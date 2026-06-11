@@ -1,0 +1,24 @@
+# Secrets / credentials
+.env
+.env.*
+!.env.example
+
+# Telethon session — grants access to your Telegram account
+*.session
+*.session-journal
+
+# Local data (raw archive + SQLite + anonymized exports)
+data/
+exports/
+
+# Python / Jupyter
+__pycache__/
+*.pyc
+*.pyo
+.ipynb_checkpoints/
+
+# OS / editor cruft
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
