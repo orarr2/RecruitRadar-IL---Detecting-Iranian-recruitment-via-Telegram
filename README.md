@@ -1,7 +1,7 @@
 # RecruitRadar-IL
 
 End-to-end research pipeline for surfacing posts on **public** Telegram channels
-that match documented patterns of Iranian recruitment of Israelis — low-effort
+that match documented patterns of Iranian recruitment of Israelis - low-effort
 "missions" for fast cash, crypto payment, photographing sites, poster-hanging,
 moving contact to private apps. Each user runs the pipeline locally against
 their own Telegram account and channel list; no central server, no shared data.
@@ -9,27 +9,6 @@ their own Telegram account and channel list; no central server, no shared data.
 The notebook is a **runnable** pipeline: connect → collect → store →
 pseudonymize → rule-based weak supervision → behavioral features → ranked
 review queue → anonymized export.
-
----
-
-## ⚠️ Read first — legal & ethical ground rules
-
-This tool collects only **public** channels/groups, the same data any member
-sees. Operate strictly as a researcher documenting, **not** as an investigator.
-
-- **Public only.** No private chats, no groups you weren't invited to.
-- **No contact.** Never message, bait, or engage a suspected account.
-- **No raw PII in the repo.** User ids are hashed (SHA-256 + salt) before
-  anything leaves your machine. Phone numbers / usernames are never exported.
-- **Data stays local.** `data/`, `*.session`, and `.env` are gitignored.
-- **Document provenance.** Keep raw JSON so you can always show what you saw.
-- **High precision over recall.** A false accusation has real consequences;
-  treat every hit as a lead to review, never a conclusion.
-- **Escalate responsibly.** Share findings with the relevant authorities /
-  academic cyber units before any public release.
-
-Comply with Telegram's [Terms of Service](https://telegram.org/tos) and your
-local laws on data collection and privacy.
 
 ---
 
@@ -51,19 +30,19 @@ Python 3.9+ is required.
    Telegram account.
 2. Click **API development tools**.
 3. Fill in any **App title** and **Short name** (lowercase letters/digits,
-   5–32 chars; no special characters), pick **Desktop** as platform, write a
+   5-32 chars; no special characters), pick **Desktop** as platform, write a
    short description in plain ASCII.
 4. On the next page you get your **`api_id`** (a number) and **`api_hash`**
-   (a 32-char hex string). Treat `api_hash` like a password — it's shown in
+   (a 32-char hex string). Treat `api_hash` like a password - it's shown in
    full only on that page.
 
-### 3. Configure credentials (optional — the notebook will prompt)
+### 3. Configure credentials (optional - the notebook will prompt)
 
 You can put credentials in a `.env` file, **or skip this step entirely** and let
 the notebook prompt you for each value interactively when you run section 1
 (the API hash, login code and 2FA password are typed in hidden). Any value
 that's missing is simply asked for; if you leave it blank, the live-collection
-cells stay disabled and the offline analysis still runs — nothing crashes.
+cells stay disabled and the offline analysis still runs - nothing crashes.
 
 To use a `.env` instead of prompts:
 
@@ -77,10 +56,10 @@ Open `.env` and fill in:
 |---|---|---|
 | `TELEGRAM_API_ID` | The number from step 2 | e.g. `12345678` |
 | `TELEGRAM_API_HASH` | The 32-char hex from step 2 | Keep secret |
-| `TELEGRAM_PHONE` | Your phone in **international format** | e.g. `+1234567890` — no spaces / dashes |
-| `HASH_SALT` | 64-char random hex | Generate with `python -c "import secrets; print(secrets.token_hex(32))"` — use a fixed value to keep pseudonyms stable across runs |
+| `TELEGRAM_PHONE` | Your phone in **international format** | e.g. `+1234567890` - no spaces / dashes |
+| `HASH_SALT` | 64-char random hex | Generate with `python -c "import secrets; print(secrets.token_hex(32))"` - use a fixed value to keep pseudonyms stable across runs |
 
-`.env` is gitignored — it never leaves your machine.
+`.env` is gitignored - it never leaves your machine.
 
 ### 4. Open the notebook
 
@@ -91,13 +70,13 @@ jupyter notebook RecruitRadarIL.ipynb
 Run cells top-to-bottom.
 
 - **Section 1:** if any credential is missing it's requested interactively
-  (API id/hash, phone, salt). Missing answers don't crash — they just disable
+  (API id/hash, phone, salt). Missing answers don't crash - they just disable
   live collection.
 - **Section 2:** Telethon prompts for the login code Telegram sends to your
   **Telegram app** (not SMS), then your two-step password if 2FA is enabled. A
-  `recruitradar.session` file is created next to the notebook — future runs skip
+  `recruitradar.session` file is created next to the notebook - future runs skip
   the login. Any failure leaves `client = None` and the offline pipeline runs on.
-- **Section 3 (cell 10):** the seed list of public channels — verify each is
+- **Section 3 (cell 10):** the seed list of public channels - verify each is
   live and replace/extend with channels you've confirmed.
 - **Section 6 (cell 15):** runs the live collection **automatically** once you're
   logged in (no uncommenting needed).
@@ -125,7 +104,7 @@ channel `__demo__` so the whole pipeline runs end-to-end as a demo.
 ### Channels (cell 10)
 
 Edit `CHANNELS` to a list of `("@username_or_id", "category")` tuples. Use
-categories like `jobs`, `rides`, `tutoring`, `yad2_mirror`, `marketplace` —
+categories like `jobs`, `rides`, `tutoring`, `yad2_mirror`, `marketplace` -
 they're used to compare base rates across channel types.
 
 To find candidate channels, search these public directories for Hebrew job /
@@ -142,12 +121,12 @@ errand / classified keywords (`דרושים`, `ג'ובים`, `לוח`, `יד2`, 
 
 `RULES` is a dict of `{category: [hebrew_regex, ...]}` with weights in
 `RULE_WEIGHTS`. The shipped lexicon targets recruitment patterns documented in
-publicly reported Israeli cases. The rules are intentionally **noisy** — they
+publicly reported Israeli cases. The rules are intentionally **noisy** - they
 generate a positive seed set for a downstream model (Snorkel / weak
 supervision), not a verdict.
 
 To target a different language or country, replace the regexes with your
-own — the rest of the pipeline (storage, behavioral features, suspicion score,
+own - the rest of the pipeline (storage, behavioral features, suspicion score,
 export) is language-agnostic.
 
 ### Suspicion score (cell 23)
@@ -159,11 +138,11 @@ have labels.
 
 ### Thresholds
 
-- `DAYS_BACK` (cell 10) — how far back to collect per channel
-- `MAX_PER_CHANNEL` (cell 10) — cap to keep first runs cheap
-- `SLEEP_BETWEEN` (cell 10) — seconds between messages; do **not** lower below
-  `0.5` — Telegram will rate-limit you
-- `THRESHOLD` (cell 24) — minimum suspicion score for the review queue
+- `DAYS_BACK` (cell 10) - how far back to collect per channel
+- `MAX_PER_CHANNEL` (cell 10) - cap to keep first runs cheap
+- `SLEEP_BETWEEN` (cell 10) - seconds between messages; do **not** lower below
+  `0.5` - Telegram will rate-limit you
+- `THRESHOLD` (cell 24) - minimum suspicion score for the review queue
 
 ---
 
@@ -171,7 +150,7 @@ have labels.
 
 ```
 .
-├── RecruitRadarIL.ipynb     Main notebook (sections 1–13)
+├── RecruitRadarIL.ipynb     Main notebook (sections 1-13)
 ├── run_offline.py           Headless analyzer (rule-scoring only)
 ├── channels_extra.txt       Extra channels, loaded automatically (no code edits)
 ├── requirements.txt         Python dependencies
@@ -185,7 +164,7 @@ Created at runtime (all gitignored):
 
 ```
 ├── .env                     Your real credentials
-├── recruitradar.session     Telethon session — grants access to your Telegram
+├── recruitradar.session     Telethon session - grants access to your Telegram
 ├── data/
 │   ├── recruitradar.db      SQLite store of all collected messages
 │   ├── raw/<channel>.jsonl  Raw provenance archive, one file per channel
@@ -198,34 +177,20 @@ Created at runtime (all gitignored):
 
 ### Two detectors
 
-1. **Keyword rules** (section 9) — a trilingual (Hebrew / Russian / English)
+1. **Keyword rules** (section 9) - a trilingual (Hebrew / Russian / English)
    lexicon of the documented recruitment playbook.
-2. **Appearance anomalies** (section 11) — a per-channel Isolation Forest that
+2. **Appearance anomalies** (section 11) - a per-channel Isolation Forest that
    learns "normal for this group" and flags posts that simply look odd, even
    with zero keyword hits. The two are blended into one ranked dashboard.
 
 ### Adding channels
 
 Either edit `CHANNELS` in the notebook, or just append `username, category`
-lines to `channels_extra.txt` — section 3 loads and de-duplicates them on the
+lines to `channels_extra.txt` - section 3 loads and de-duplicates them on the
 next run, no code changes needed.
-
----
-
-## Where to go from here
-
-1. **Labeling** — hand-verify the review queue → your first ground-truth set.
-2. **Weak supervision** — port `RULES` into Snorkel labeling functions, train a
-   label model, then a classifier on the de-noised labels.
-3. **Text model** — fine-tune AlephBERT / HeBERT on the corpus.
-4. **Behavioral model** — XGBoost on sender/channel features.
-5. **Graph** — sender↔channel interaction graph; a GNN can catch coordinated
-   accounts the text model misses.
-6. **Validation** — hold-out set from media-reported cases never seen in
-   training. **Optimize for precision.**
 
 ---
 
 ## License
 
-MIT — see [LICENSE](LICENSE).
+MIT - see [LICENSE](LICENSE).

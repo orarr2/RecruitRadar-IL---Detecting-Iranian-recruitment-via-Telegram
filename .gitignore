@@ -3,7 +3,7 @@
 .env.*
 !.env.example
 
-# Telethon session — grants access to your Telegram account
+# Telethon session - grants access to your Telegram account
 *.session
 *.session-journal
 

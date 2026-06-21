@@ -1,4 +1,4 @@
-# Extra channels — loaded automatically by section 3 of the notebook.
+# Extra channels - loaded automatically by section 3 of the notebook.
 # One per line:   username, category      (the @ is optional)
 # Lines starting with # are ignored. Unknown categories are kept as-is.
 #

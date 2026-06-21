@@ -1,7 +1,7 @@
 """
 Runs sections 1, 4-5, 7-10 of RecruitRadarIL.ipynb against the built-in
 synthetic demo. Sections 2 and 6 (Telegram login + bulk collection) are
-skipped — they require live api_id/api_hash and an interactive SMS code.
+skipped - they require live api_id/api_hash and an interactive SMS code.
 
 Outputs:
   data/recruitradar.db        SQLite store (demo rows under channel '__demo__')
