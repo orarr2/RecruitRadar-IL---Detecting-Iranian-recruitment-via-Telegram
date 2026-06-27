@@ -18,9 +18,11 @@ review queue → anonymized export.
 
 ```bash
 git clone https://github.com/orarr2/RecruitRadar-IL---Detecting-Iranian-recruitment-via-Telegram.git
-cd RecruitRadar-IL---Detecting-Iranian-recruitment-via-Telegram
+cd RecruitRadar-IL---Detecting-Iranian-recruitment-via-Telegram/RecruitRadarIL
 pip install -r requirements.txt
 ```
+
+All code, configuration, and data live under the [`RecruitRadarIL/`](RecruitRadarIL) folder - run every command shown below from inside it.
 
 Python 3.9+ is required.
 
@@ -150,17 +152,18 @@ have labels.
 
 ```
 .
-├── RecruitRadarIL.ipynb     Main notebook (sections 1-13)
-├── run_offline.py           Headless analyzer (rule-scoring only)
-├── channels_extra.txt       Extra channels, loaded automatically (no code edits)
-├── requirements.txt         Python dependencies
-├── .env.example             Template for credentials (.env is gitignored)
-├── .gitignore               Blocks .env, *.session, data/, exports/
 ├── README.md                This file
-└── LICENSE                  MIT
+└── RecruitRadarIL/
+    ├── RecruitRadarIL.ipynb     Main notebook (sections 1-13)
+    ├── run_offline.py           Headless analyzer (rule-scoring only)
+    ├── channels_extra.txt       Extra channels, loaded automatically (no code edits)
+    ├── requirements.txt         Python dependencies
+    ├── .env.example             Template for credentials (.env is gitignored)
+    ├── .gitignore               Blocks .env, *.session, data/, exports/
+    └── LICENSE                  MIT
 ```
 
-Created at runtime (all gitignored):
+Created at runtime inside `RecruitRadarIL/` (all gitignored):
 
 ```
 ├── .env                     Your real credentials
@@ -193,4 +196,4 @@ next run, no code changes needed.
 
 ## License
 
-MIT - see [LICENSE](LICENSE).
+MIT - see [LICENSE](RecruitRadarIL/LICENSE).
