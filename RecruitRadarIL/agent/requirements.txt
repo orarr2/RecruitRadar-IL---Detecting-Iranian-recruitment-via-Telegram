@@ -1,0 +1,13 @@
+# Adaptive layer dependencies (in addition to the base project's).
+pandas
+numpy
+scikit-learn
+requests
+streamlit
+
+# Optional but recommended: the Snorkel label model (pulls in torch - large
+# download). Without it the notebook falls back to a weighted vote.
+snorkel
+
+# The Telegram control bot (agent/telegram_bot.py) needs no extra package -
+# it drives the Bot API over plain HTTP with `requests`, already listed above.
