@@ -60,6 +60,8 @@ python agent/telegram_bot.py
 #    agent/.env as BOT_OWNER_ID=... and restart, so only you can drive it.
 ```
 
+Full step-by-step (Hebrew + English): [`TELEGRAM_SETUP.md`](TELEGRAM_SETUP.md).
+
 | Command | Does |
 |---|---|
 | `/scan` | Re-score the corpus (rules + appearance + label model + discovery). |
