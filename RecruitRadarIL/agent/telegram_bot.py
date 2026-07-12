@@ -59,8 +59,10 @@ _load_env(ROOT / ".env")
 _load_env(ROOT / "agent" / ".env")
 
 TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "").strip()
-OWNER = os.getenv("BOT_OWNER_ID", "").strip()
-OWNER = int(OWNER) if OWNER.isdigit() else None
+# Tolerate a value that was pasted with surrounding quotes or whitespace
+# (a common mistake when saving the secret) - strip them before parsing.
+OWNER = os.getenv("BOT_OWNER_ID", "").strip().strip('"').strip("'").strip()
+OWNER = int(OWNER) if OWNER.lstrip("-").isdigit() else None
 API = f"https://api.telegram.org/bot{TOKEN}"
 
 _scan_lock = threading.Lock()
