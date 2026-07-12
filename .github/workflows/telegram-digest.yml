@@ -88,12 +88,18 @@ jobs:
           done
 
       - name: Install dependencies
-        # Light set only - fast and enough for scoring. Snorkel/torch are
-        # optional; pipeline.py falls back to a weighted vote without them.
-        # Telethon powers the optional headless collector.
+        # snorkel gives the Snorkel LabelModel scoring instead of the
+        # weighted-vote fallback (recall ~47% vs ~17% on the corpus). It pulls
+        # in a CPU torch build so the install step is longer, but scoring is
+        # then much more permissive on messages where only one or two LFs
+        # fire strongly. Telethon powers the optional headless collector.
         # deep-translator ships the digest with a Hebrew translation of
         # Russian rows (uses Google Translate's public endpoint).
-        run: pip install --quiet pandas numpy scikit-learn requests matplotlib telethon deep-translator openpyxl
+        # openpyxl writes the styled XLSX delivered to Telegram.
+        run: |
+          pip install --quiet torch --index-url https://download.pytorch.org/whl/cpu
+          pip install --quiet pandas numpy scikit-learn requests matplotlib \
+                              telethon deep-translator openpyxl snorkel
 
       - name: Collect fresh messages (optional)
         # Runs only meaningfully when the three Telegram-user secrets are set;
