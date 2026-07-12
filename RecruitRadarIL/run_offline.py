@@ -94,73 +94,145 @@ def seed_demo_if_empty(conn):
     conn.commit()
 
 
-# Kept in sync with the notebook (cell 21). Expanded Hebrew + English lexicons
-# derived from publicly reported recruitment patterns. Intentionally noisy.
+# Kept in sync with the notebook (cell 21). Trilingual patterns
+# (Hebrew / Russian / English) derived from publicly reported recruitment
+# patterns. Intentionally noisy - LF1 votes REC only when >= 2 categories fire.
 RULES = {
     "easy_money": [
+        # Hebrew
         r"כסף\s*קל", r"כסף\s*מהיר", r"כסף\s*בקלות", r"רווח\s*(מהיר|גבוה|קל)",
         r"תשלום\s*מיידי", r"הרבה\s*כסף", r"להרוויח\s*בקלות", r"רווח\s*יומי",
         r"\bבלי\s*ניסיון\b", r"ללא\s*ניסיון", r"עבודה\s*קלה", r"עבודה\s*פשוטה",
         r"סכום\s*גבוה", r"מאות\s*(דולר|שקל|אירו)", r"אלפי\s*(שקל|דולר)",
         r"שכר\s*גבוה", r"בונוס\s*גבוה", r"כסף\s*מהבית", r"תשלום\s*נדיב",
+        # Russian
+        r"лёгкие\s*деньги", r"легкие\s*деньги", r"быстрые\s*деньги",
+        r"лёгкий\s*заработок", r"легкий\s*заработок", r"быстрый\s*заработок",
+        r"хороший\s*заработок", r"стабильный\s*доход", r"высокий\s*доход",
+        r"оплата\s*(сразу|мгновенн|наличн)", r"выплата\s*в\s*день",
+        r"простая\s*работа", r"без\s*опыта", r"опыт\s*не\s*(требуется|нужен)",
+        r"щедрая\s*оплата", r"хорошие\s*деньги", r"приличные\s*деньги",
+        # English
         r"\beasy\s*(money|cash)\b", r"\bquick\s*(money|cash)\b", r"\bfast\s*cash\b",
         r"\bget\s*paid\b", r"\bearn\s*(fast|easy|big)\b", r"\bgood\s*money\b",
+        r"\bhigh\s*(pay|earnings|income)\b", r"\bsame[-\s]?day\s*pay\b",
     ],
     "crypto": [
+        # Hebrew
         r"קריפטו", r"ביטקוין", r"ביטקוֹין", r"את'?ריום", r"אתריום", r"מטבע\s*קריפטו",
-        r"\bbtc\b", r"\busdt\b", r"\busdc\b", r"\beth\b", r"\bcrypto\b",
-        r"\bbitcoin\b", r"\btether\b", r"\bbinance\b", r"\bwallet\b", r"\bton\b",
         r"ארנק\s*(דיגיטלי|קריפטו)", r"מטבע\s*דיגיטלי", r"מטבעות\s*דיגיטליים",
         r"תשלום\s*ב(קריפטו|ביטקוין|מטבע)", r"כתובת\s*ארנק", r"העברה\s*אנונימית",
+        # Russian
+        r"крипт", r"биткоин", r"биткойн", r"эфир(иум)?", r"тезер",
+        r"крипто[-\s]?кошел[её]к", r"адрес\s*кошелька",
+        r"оплата\s*в\s*крипт", r"расч[её]т\s*в\s*крипт",
+        # English + tickers (multi-lingual)
+        r"\bbtc\b", r"\busdt\b", r"\busdc\b", r"\beth\b", r"\bcrypto\b",
+        r"\bbitcoin\b", r"\btether\b", r"\bbinance\b", r"\bwallet\b",
+        r"\bton\b(?!\s*of)", r"\btrc[-\s]?20\b", r"\berc[-\s]?20\b",
+        r"\bstablecoin\b", r"\bcold\s*wallet\b",
     ],
     "tasking": [
+        # Hebrew
         r"משימה\s*(קטנה|קלה|פשוטה|זריזה)", r"מטלה\s*קטנה", r"ג'וב\s*קטן",
         r"לצלם", r"צילום\s*של", r"לצלם\s*(בניין|מתקן|אתר|מקום|אזור)", r"לתעד",
         r"לתלות\s*(כרזות|שלטים|פלייר|כרזה|מודעות)", r"להעביר\s*חבילה",
         r"ריסוס", r"גרפיטי", r"לרסס", r"לכתוב\s*על\s*קיר", r"כתובות\s*גרפיטי",
         r"להדביק\s*(מדבקות|מדבקה|כרזות)", r"להניח\s*(חבילה|מעטפה|חפץ)",
         r"לאסוף\s*(חבילה|מעטפה|חפץ)", r"להצית", r"להבעיר", r"לשרוף", r"הצתה",
-        r"שליחות\s*קטנה", r"\btake\s*(a\s*)?photo\b", r"\bphotograph\b",
-        r"\bspray\s*paint\b", r"\bhang\s*(posters|signs)\b", r"\bdrop\s*(a\s*)?package\b",
+        r"שליחות\s*קטנה",
+        # Russian
+        r"сфотографировать", r"фото\s*объекта", r"снять\s*(на\s*)?видео",
+        r"снять\s*камер", r"расклеить\s*(плакаты|листовк)", r"разбросать",
+        r"поджечь", r"поджог", r"распылить", r"граффити",
+        r"оставить\s*(пакет|посылк|конверт)", r"забрать\s*(пакет|посылк|конверт)",
+        r"наклеить\s*(наклейк|плакат|стикер)",
+        # English
+        r"\btake\s*(a\s*)?photo\b", r"\bphotograph\b",
+        r"\bspray\s*paint\b", r"\bhang\s*(posters|signs)\b",
+        r"\bdrop\s*(a\s*)?package\b", r"\bpick\s*up\s*(a\s*)?package\b",
+        r"\bset\s*(a\s*)?fire\b", r"\barson\b", r"\btag(ging)?\s*walls\b",
     ],
     "opsec": [
+        # Hebrew
         r"\bבפרטי\b", r"פנו\s*בפרטי", r"שלחו\s*בפרטי", r"דברו\s*איתי\s*בפרטי",
-        r"נמשיך\s*בפרטי", r"סיגנל", r"\bsignal\b", r"וואטסאפ", r"\bwhatsapp\b",
+        r"נמשיך\s*בפרטי", r"סיגנל", r"וואטסאפ",
         r"עבור\s*ל(סיגנל|וואטסאפ|אפליקציה)", r"אפליקציה\s*מאובטחת",
         r"אנונימי", r"אנונימיות", r"בעילום\s*שם", r"מאובטח", r"מוצפן", r"הצפנה",
-        r"\bvpn\b", r"מחק\s*אחרי", r"מחק\s*את\s*ההודעה", r"נמחק\s*אוטומטית",
+        r"מחק\s*אחרי", r"מחק\s*את\s*ההודעה", r"נמחק\s*אוטומטית",
         r"דיסקרטי", r"בדיסקרטיות", r"שמור\s*בסוד", r"אל\s*תספר\s*לאף\s*אחד",
-        r"בלי\s*שאלות", r"לא\s*שואלים\s*שאלות", r"\bno\s*questions\b",
-        r"\bdiscreet\b", r"\banonymous\b", r"\bdelete\s*after\b",
+        r"בלי\s*שאלות", r"לא\s*שואלים\s*שאלות",
+        # Russian
+        r"пиш(и|ите)\s*в\s*(лс|личку|личные)", r"\bв\s*личку\b", r"\bлс\b",
+        r"пере(йд[её]м|ходим)\s*в\s*(сигнал|signal|whatsapp|ватсап)",
+        r"удали(ть)?\s*(после|сообщени)", r"самоудал", r"конфиденциальн",
+        r"анонимн", r"секретн", r"без\s*вопросов", r"никому\s*не\s*говор",
+        # English + app names (multi-lingual)
+        r"\bsignal\b", r"\bwhatsapp\b", r"\btelegram\s*secret\s*chat\b",
+        r"\bvpn\b", r"\bno\s*questions\b", r"\bdiscreet\b", r"\banonymous\b",
+        r"\bdelete\s*after\b", r"\bself[-\s]?destruct\b", r"\bkeep\s*it\s*quiet\b",
+        r"\bDM\s*me\b", r"\bslide\s*into\s*DMs\b",
     ],
     "target_sites": [
+        # Hebrew
         r"בסיס\s*צבאי", r"בסיסים", r"מתקן\s*(צבאי|ביטחוני|רגיש)", r"מתקן\s*ביטחוני",
         r"תחנת\s*כוח", r"נמל", r"נמל\s*תעופה", r"שדה\s*תעופה", r"נתב\"ג",
         r"אנטנה", r"אנטנות", r"מצלמ(ה|ות)\s*אבטחה", r"מערכת\s*אבטחה",
         r"כיפת\s*ברזל", r"מערך\s*הגנה", r"מכ\"ם", r"רכבת", r"תחנת\s*דלק",
         r"תשתית\s*(קריטית|חיונית|לאומית)", r"תשתיות", r"מאגר\s*מים",
+        r"מחסום", r"שגרירות", r"תחנת\s*משטרה",
+        # Russian
+        r"военн(ая|ый|ой)\s*(база|объект|часть)", r"аэропорт", r"порт",
+        r"антенн", r"камер(а|ы)\s*(наблюдения|безопасности)",
+        r"железн(ая|ой)\s*дорог", r"электростанц", r"нефтепровод",
+        r"газопровод", r"водохранилищ", r"железнодорожн",
+        r"блок[-\s]?пост", r"посольств", r"полицейск(ий|ая|ое)\s*участок",
+        # English
         r"\bmilitary\s*base\b", r"\bpower\s*(plant|station)\b", r"\bairport\b",
-        r"\biron\s*dome\b", r"\bcheckpoint\b", r"מחסום", r"שגרירות", r"תחנת\s*משטרה",
+        r"\biron\s*dome\b", r"\bcheckpoint\b", r"\bembassy\b",
+        r"\bsurveillance\s*camera\b", r"\bpolice\s*station\b",
     ],
     "recruitment_framing": [
+        # Hebrew
         r"מחפש(ים|ת)?\s*אנשים", r"דרוש(ים|ה)?\s*אנשים", r"מגייס(ים)?",
         r"עבודה\s*מהבית", r"עבודה\s*מהטלפון", r"להרוויח\s*מהטלפון",
         r"עבודה\s*מהנייד", r"ג'וב\s*מהבית", r"הזדמנות\s*(הכנסה|רווח)",
         r"לא\s*צריך\s*ניסיון", r"מתאים\s*לכולם", r"גם\s*נוער", r"גם\s*בני\s*נוער",
         r"גם\s*לסטודנטים", r"מקומות\s*אחרונים", r"מתאים\s*גם\s*לקטינים",
-        r"\bwork\s*from\s*home\b", r"\bno\s*experience\b", r"\blooking\s*for\s*people\b",
-        r"\bside\s*gig\b", r"\bpart\s*time\b",
+        # Russian
+        r"ищем\s*людей", r"требуются\s*люди", r"требуются\s*работник",
+        r"нужны\s*люди", r"работа\s*(из\s*дома|на\s*дому|с\s*телефона)",
+        r"заработок\s*(с|на)\s*телефон", r"подработка",
+        r"подходит\s*(студентам|подросткам|школьникам|молодёжи|молодежи)",
+        r"срочный\s*набор", r"без\s*привязки\s*к\s*(графику|месту)",
+        # English
+        r"\bwork\s*from\s*home\b", r"\bno\s*experience\b",
+        r"\blooking\s*for\s*people\b", r"\bside\s*gig\b", r"\bpart\s*time\b",
+        r"\bhiring\s*now\b", r"\bteens?\s*welcome\b", r"\bstudents?\s*welcome\b",
     ],
     "urgency": [
+        # Hebrew
         r"דחוף", r"עכשיו", r"מיד", r"מיידי", r"היום", r"הערב", r"זריז", r"מהר",
         r"בהקדם", r"רק\s*היום", r"זמן\s*מוגבל", r"מהיום\s*להיום", r"חייב\s*עכשיו",
+        # Russian
+        r"срочно", r"сегодня", r"прямо\s*сейчас", r"немедленно", r"быстро",
+        r"только\s*сегодня", r"ограниченн(ое|ый)\s*(время|срок)",
+        # English
         r"\burgent\b", r"\basap\b", r"\bright\s*now\b", r"\btoday\s*only\b",
+        r"\blimited\s*time\b", r"\bimmediate\b",
     ],
     "pretext": [
+        # Hebrew
         r"מתווך\s*נדל\"?ן", r"תיווך\s*דירות", r"צלם\s*ל(אירוע|פרויקט)", r"צילומי\s*דרון",
         r"רחפן", r"דרון", r"שליח", r"שירותי\s*שליחות", r"חוקר\s*פרטי",
-        r"היכרויות", r"דייט", r"\bdrone\b", r"\bcourier\b", r"\breal\s*estate\b",
-        r"\bphoto\s*shoot\b", r"\bprivate\s*investigator\b",
+        r"היכרויות", r"דייט",
+        # Russian
+        r"недвижимост", r"риэлтор", r"курьер", r"курьерск",
+        r"квадрокоптер", r"дрон", r"частн(ый|ое)\s*расследован",
+        r"детектив", r"свидан",
+        # English
+        r"\bdrone\b", r"\bcourier\b", r"\breal\s*estate\b",
+        r"\bphoto\s*shoot\b", r"\bprivate\s*investigator\b", r"\bdating\b",
     ],
 }
 RULE_WEIGHTS = {
