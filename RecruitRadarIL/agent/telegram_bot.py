@@ -108,10 +108,11 @@ def send(chat_id, text):
                   f"chunk_len={len(chunk)})")
 
 
-def send_document(chat_id, filename, content_bytes, caption=None):
+def send_document(chat_id, filename, content_bytes, caption=None,
+                  mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"):
     """Upload a file to the chat via sendDocument. Multipart, not JSON."""
     try:
-        files = {"document": (filename, content_bytes, "text/csv")}
+        files = {"document": (filename, content_bytes, mime)}
         data = {"chat_id": chat_id}
         if caption:
             data["caption"] = caption
@@ -161,7 +162,7 @@ def fmt_status(m):
 
 
 def build_digest_caption(summary, n_new):
-    """Short caption that ships with the CSV attachment."""
+    """Short caption that ships with the XLSX attachment."""
     return (f"RecruitRadar-IL digest\n"
             f"run {summary['run_id']}\n"
             f"{n_new} new leads (p>=0.5) since last digest\n"
@@ -170,74 +171,124 @@ def build_digest_caption(summary, n_new):
             f"verdicts so far: {summary['n_verdicts']}")
 
 
-def _wrap_paragraph(s, width=55):
-    """Insert soft newlines at word boundaries so a spreadsheet or Telegram's
-    inline CSV preview shows the cell as a compact paragraph instead of one
-    long horizontal line. Preserves existing paragraph breaks."""
-    import textwrap
-    if not s:
-        return s
-    out = []
-    for para in str(s).split("\n"):
-        para = para.strip()
-        if not para:
-            out.append("")
-            continue
-        out.append(textwrap.fill(para, width=width, break_long_words=False,
-                                 break_on_hyphens=False, replace_whitespace=False))
-    return "\n".join(out)
+# Column order optimised for scanning: score first (so the reader eyes it
+# immediately), then when/where, then the Hebrew translation (populated when
+# the original was Russian), then the original text, then trailing metadata.
+REPORT_COLS = ["p_recruitment", "date", "channel", "text_he",
+               "text", "category", "rule_hits", "sender_hash", "msg_id"]
+
+# Column widths (in Excel character units) tuned for phone-viewer readability.
+# Text columns get generous width + wrap_text so long messages render as
+# multi-line paragraphs inside the cell instead of an unreadable strip.
+COL_WIDTHS = {
+    "p_recruitment": 8,   "date": 20,   "channel": 20,
+    "text_he": 55,        "text": 55,   "category": 14,
+    "rule_hits": 30,      "sender_hash": 18,   "msg_id": 10,
+}
 
 
-# CSV column order: cheapest-to-scan first (score, when, where), then Hebrew
-# translation (when the original is Russian), then the original text. Trailing
-# columns are metadata a reader rarely opens.
-CSV_COLS = ["p_recruitment", "date", "channel", "text_he",
-            "text", "category", "rule_hits", "sender_hash", "msg_id"]
+def build_xlsx_bytes(df):
+    """Render the unsent-leads DataFrame as a styled XLSX workbook and return
+    its bytes. The formatting is what makes this readable on a phone:
 
-
-def build_csv_bytes(df):
-    """Encode the unsent-leads DataFrame as UTF-8 CSV (BOM for Excel).
-
-    * Translates Russian rows to Hebrew into a new `text_he` column.
-    * Word-wraps both `text` and `text_he` so the cells display as compact
-      paragraphs instead of one very long horizontal line.
-    * Reorders columns short-first, long-last.
+    * Frozen header row, bold header background, auto-filter enabled.
+    * Wide text columns with wrap_text=True so long messages become paragraphs
+      inside the cell instead of a single overflowing line.
+    * Row colouring by p_recruitment - deep red for very high (>= 0.8), amber
+      for the mid band, so the eye lands on the most suspicious rows first.
+    * Column order: score, when, where, Hebrew, original, then trailing meta.
     """
+    from openpyxl import Workbook
+    from openpyxl.styles import Alignment, Font, PatternFill, Border, Side
+    from openpyxl.utils import get_column_letter
+
     df = df.copy()
-    # Translation - only Russian rows; others leave text_he empty.
     df["text_he"] = pipeline.translate_series(df["text"])
-    # Wrap both language columns so the display is a paragraph, not a horizontal
-    # line. width=55 fits comfortably on a phone-width column.
-    df["text"] = df["text"].map(_wrap_paragraph)
-    df["text_he"] = df["text_he"].map(_wrap_paragraph)
-    # Any columns present but not in CSV_COLS get dropped; any listed but
-    # missing are created empty so the header shape is stable.
-    for col in CSV_COLS:
+    for col in REPORT_COLS:
         if col not in df.columns:
             df[col] = ""
-    df = df[CSV_COLS]
-    buf = io.StringIO()
-    df.to_csv(buf, index=False)
-    return ("﻿" + buf.getvalue()).encode("utf-8")
+    df = df[REPORT_COLS]
+
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "Leads"
+
+    header_fill = PatternFill(start_color="1F4E78", end_color="1F4E78", fill_type="solid")
+    header_font = Font(bold=True, color="FFFFFF", size=11)
+    high_fill   = PatternFill(start_color="F8CBAD", end_color="F8CBAD", fill_type="solid")
+    mid_fill    = PatternFill(start_color="FFF2CC", end_color="FFF2CC", fill_type="solid")
+    thin        = Side(border_style="thin", color="D9D9D9")
+    cell_border = Border(left=thin, right=thin, top=thin, bottom=thin)
+    wrap_top    = Alignment(wrap_text=True, vertical="top", horizontal="left")
+
+    # Header row
+    ws.append(REPORT_COLS)
+    for i, col in enumerate(REPORT_COLS, 1):
+        c = ws.cell(row=1, column=i)
+        c.fill = header_fill
+        c.font = header_font
+        c.alignment = Alignment(horizontal="center", vertical="center")
+        c.border = cell_border
+        ws.column_dimensions[get_column_letter(i)].width = COL_WIDTHS.get(col, 15)
+    ws.row_dimensions[1].height = 22
+
+    # Data rows
+    for _, row in df.iterrows():
+        ws.append([str(row[c]) if row[c] is not None else "" for c in REPORT_COLS])
+
+    # Row styling: fill by score, wrap all text cells, thin borders throughout.
+    for r in range(2, ws.max_row + 1):
+        try:
+            p = float(ws.cell(row=r, column=1).value)
+        except (TypeError, ValueError):
+            p = 0.0
+        row_fill = high_fill if p >= 0.8 else (mid_fill if p >= 0.5 else None)
+        # Set row height so wrapped text has vertical breathing room without
+        # blowing up too much. openpyxl won't compute this from wrap alone.
+        ws.row_dimensions[r].height = 90
+        for col_idx in range(1, len(REPORT_COLS) + 1):
+            c = ws.cell(row=r, column=col_idx)
+            c.alignment = wrap_top
+            c.border = cell_border
+            if row_fill is not None:
+                c.fill = row_fill
+
+    # Freeze header and enable filtering on all columns.
+    ws.freeze_panes = "A2"
+    ws.auto_filter.ref = ws.dimensions
+
+    # Format p_recruitment as 3-decimal number for a clean glance.
+    for r in range(2, ws.max_row + 1):
+        cell = ws.cell(row=r, column=1)
+        try:
+            cell.value = float(cell.value)
+            cell.number_format = "0.000"
+        except (TypeError, ValueError):
+            pass
+
+    buf = io.BytesIO()
+    wb.save(buf)
+    return buf.getvalue()
 
 
 def deliver_digest(chat_id, summary):
-    """Ship (status text + CSV of unsent flagged leads) to `chat_id`. Marks
-    every lead sent afterward. If there are no new leads, sends NOTHING and
-    prints a note to the log."""
+    """Ship (caption + styled XLSX of unsent flagged leads) to `chat_id`.
+    Marks every lead sent afterward. If there are no new leads, sends NOTHING
+    and prints a note to the log."""
     fresh = pipeline.unsent_flagged()
     n_new = len(fresh)
     if n_new == 0:
         print(f"[digest] no new leads to send (chat={chat_id})")
         return 0
     caption = build_digest_caption(summary, n_new)
-    filename = f"recruitradar-leads-{datetime.now(timezone.utc):%Y%m%d-%H%M}.csv"
-    csv_bytes = build_csv_bytes(fresh)
-    r = send_document(chat_id, filename, csv_bytes, caption=caption)
+    filename = f"recruitradar-leads-{datetime.now(timezone.utc):%Y%m%d-%H%M}.xlsx"
+    xlsx_bytes = build_xlsx_bytes(fresh)
+    r = send_document(chat_id, filename, xlsx_bytes, caption=caption)
     if r.get("ok"):
         pairs = list(zip(fresh["channel"], fresh["msg_id"]))
         pipeline.mark_sent(pairs)
-        print(f"[digest] delivered {n_new} leads (chat={chat_id}, file={filename})")
+        print(f"[digest] delivered {n_new} leads (chat={chat_id}, file={filename}, "
+              f"bytes={len(xlsx_bytes)})")
     return n_new
 
 

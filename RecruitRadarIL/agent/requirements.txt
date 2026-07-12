@@ -5,10 +5,14 @@ scikit-learn
 requests
 streamlit
 
-# Russian -> Hebrew auto-translation of the digest CSV. Uses Google
+# Russian -> Hebrew auto-translation of the digest report. Uses Google
 # Translate's public endpoint (no API key). Absence is tolerated - text_he
 # stays empty and the original text still ships.
 deep-translator
+
+# The digest is delivered as a styled XLSX (freeze pane, wrap text, colour
+# by p_recruitment). openpyxl is the only writer for that.
+openpyxl
 
 # Optional but recommended: the Snorkel label model (pulls in torch - large
 # download). Without it the notebook falls back to a weighted vote.

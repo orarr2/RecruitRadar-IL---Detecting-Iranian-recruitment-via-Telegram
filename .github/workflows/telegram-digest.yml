@@ -93,7 +93,7 @@ jobs:
         # Telethon powers the optional headless collector.
         # deep-translator ships the digest with a Hebrew translation of
         # Russian rows (uses Google Translate's public endpoint).
-        run: pip install --quiet pandas numpy scikit-learn requests matplotlib telethon deep-translator
+        run: pip install --quiet pandas numpy scikit-learn requests matplotlib telethon deep-translator openpyxl
 
       - name: Collect fresh messages (optional)
         # Runs only meaningfully when the three Telegram-user secrets are set;
