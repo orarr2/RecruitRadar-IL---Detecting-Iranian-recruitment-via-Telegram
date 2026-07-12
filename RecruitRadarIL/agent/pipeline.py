@@ -52,6 +52,12 @@ _load_env(ROOT / "agent" / ".env")
 
 OLLAMA_HOST    = os.getenv("OLLAMA_HOST", "http://localhost:11434")
 OLLAMA_MODEL   = os.getenv("OLLAMA_MODEL", "llama3.2:3b")
+# LF3 provider: "ollama" (default; local, free, no key) or "groq" (cloud, free
+# tier, needs GROQ_API_KEY - what the GitHub Actions workflow uses).
+LLM_PROVIDER   = os.getenv("LLM_PROVIDER", "ollama").lower()
+GROQ_API_KEY   = os.getenv("GROQ_API_KEY", "").strip()
+GROQ_MODEL     = os.getenv("GROQ_MODEL", "llama-3.3-70b-versatile")
+GROQ_URL       = "https://api.groq.com/openai/v1/chat/completions"
 PROMPT_VERSION = "v1"
 MAX_LLM_CALLS  = int(os.getenv("MAX_LLM_CALLS", "300"))
 RETENTION_DAYS = int(os.getenv("RETENTION_DAYS", "90"))
@@ -201,6 +207,45 @@ def _ollama_up():
         return False
 
 
+def _llm_provider_ready():
+    """Return (ok, reason). Provider-agnostic entry point for LF3."""
+    if LLM_PROVIDER == "groq":
+        if not GROQ_API_KEY:
+            return False, "groq selected but GROQ_API_KEY is not set"
+        return True, None
+    # default: local Ollama
+    if not _ollama_up():
+        return False, f"ollama not reachable at {OLLAMA_HOST}"
+    return True, None
+
+
+def _llm_call(text):
+    """Send one classification request and return (raw_response_json_str, model).
+    Raises on transport errors; caller decides what to do."""
+    import requests
+    if LLM_PROVIDER == "groq":
+        # OpenAI-compatible endpoint. `response_format: json_object` forces the
+        # model to emit a single JSON object (mirrors Ollama's format=json).
+        r = requests.post(GROQ_URL, timeout=60, headers={
+            "Authorization": f"Bearer {GROQ_API_KEY}",
+            "Content-Type": "application/json",
+        }, json={
+            "model": GROQ_MODEL, "temperature": 0,
+            "response_format": {"type": "json_object"},
+            "messages": [{"role": "system", "content": SYS_PROMPT},
+                         {"role": "user",   "content": f"<msg>\n{text}\n</msg>"}]})
+        r.raise_for_status()
+        return r.json()["choices"][0]["message"]["content"], GROQ_MODEL
+    # default: local Ollama
+    r = requests.post(f"{OLLAMA_HOST}/api/chat", timeout=180, json={
+        "model": OLLAMA_MODEL, "stream": False, "format": "json",
+        "options": {"temperature": 0},
+        "messages": [{"role": "system", "content": SYS_PROMPT},
+                     {"role": "user",   "content": f"<msg>\n{text}\n</msg>"}]})
+    r.raise_for_status()
+    return r.json()["message"]["content"], OLLAMA_MODEL
+
+
 def _text_hash(t):
     return hashlib.sha256((t or "").encode("utf-8")).hexdigest()
 
@@ -238,26 +283,25 @@ def _compute_lf_llm(df, conn, use_llm, on_progress=None):
             pass
         elif len(to_call) > MAX_LLM_CALLS:
             skipped = f"projected {len(to_call)} calls > budget {MAX_LLM_CALLS}"
-        elif not _ollama_up():
-            skipped = f"ollama not reachable at {OLLAMA_HOST}"
+        else:
+            provider_ok, reason = _llm_provider_ready()
+            if not provider_ok:
+                skipped = reason
         if skipped is None and to_call:
             for i, t in enumerate(to_call, 1):
                 try:
-                    r = requests.post(f"{OLLAMA_HOST}/api/chat", timeout=180, json={
-                        "model": OLLAMA_MODEL, "stream": False, "format": "json",
-                        "options": {"temperature": 0},
-                        "messages": [{"role": "system", "content": SYS_PROMPT},
-                                     {"role": "user", "content": f"<msg>\n{t}\n</msg>"}]})
-                    r.raise_for_status()
-                    resp = r.json()["message"]["content"]
+                    resp, model = _llm_call(t)
                     conn.execute("INSERT OR REPLACE INTO llm_cache VALUES (?,?,?,?,?)",
-                                 (_text_hash(t), PROMPT_VERSION, resp, OLLAMA_MODEL,
+                                 (_text_hash(t), PROMPT_VERSION, resp, model,
                                   datetime.now(timezone.utc).isoformat()))
                     conn.commit()
                     cached[t] = resp
                     calls += 1
-                except requests.RequestException:
-                    pass
+                except requests.RequestException as e:
+                    # Any transport-level failure is a per-message miss, not a
+                    # run-abort. Surface it so we can see rate limits or 5xx.
+                    print(f"[lf3] {LLM_PROVIDER} call failed on text_hash "
+                          f"{_text_hash(t)[:12]}: {e.__class__.__name__} {e}")
                 if on_progress and (i % 20 == 0 or i == len(to_call)):
                     on_progress(i, len(to_call))
         resp_votes = {t: _vote_from_response(c) for t, c in cached.items() if c is not None}
@@ -270,8 +314,13 @@ def _compute_lf_llm(df, conn, use_llm, on_progress=None):
 def _compute_lf_verdicts(df):
     df["lf_verdicts"] = ABSTAIN
     n = 0
-    if VERDICTS_PATH.exists():
+    # verdicts.jsonl is tracked in the repo and starts empty; guard for both
+    # "no file" and "file exists but has zero records / no verdict column yet"
+    # so a fresh clone or the first cloud run does not crash.
+    if VERDICTS_PATH.exists() and VERDICTS_PATH.stat().st_size > 0:
         v = pd.read_json(VERDICTS_PATH, lines=True)
+        if "verdict" not in v.columns:
+            return 0
         v = v[v["verdict"].isin(["accept", "reject"])]
         n = len(v)
         if n:

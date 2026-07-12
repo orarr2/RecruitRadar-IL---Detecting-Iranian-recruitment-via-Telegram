@@ -20,9 +20,9 @@ on:
   workflow_dispatch:
     inputs:
       deep:
-        description: "Also run the LLM mid-band pass (needs OLLAMA_HOST; usually leave false)"
+        description: "Run the LLM mid-band pass (Groq). Leave true unless GROQ_API_KEY is unset."
         type: boolean
-        default: false
+        default: true
 
 # Don't let two runs overlap (they share the same DB cache).
 concurrency:
@@ -57,6 +57,13 @@ jobs:
           restore-keys: |
             recruitradar-data-
 
+      # data/verdicts.jsonl is tracked in the repo (the analyst feedback loop -
+      # LF4). If a stale cache overwrote it during restore, snap it back to
+      # whatever the current commit has. `git checkout HEAD -- ...` is a no-op
+      # when the cache did not contain the file, so this is safe either way.
+      - name: Ensure repo verdicts.jsonl wins over cache
+        run: git checkout HEAD -- data/verdicts.jsonl
+
       # Report which secrets actually reached the runner. GitHub auto-redacts
       # secret values in logs, so we deliberately only print lengths - never
       # content. This makes "the secret is set but wrong / in the wrong tab"
@@ -69,9 +76,11 @@ jobs:
           TELEGRAM_API_ID: ${{ secrets.TELEGRAM_API_ID }}
           TELEGRAM_API_HASH: ${{ secrets.TELEGRAM_API_HASH }}
           TELETHON_SESSION: ${{ secrets.TELETHON_SESSION }}
+          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
         run: |
           for var in TELEGRAM_BOT_TOKEN BOT_OWNER_ID HASH_SALT \
-                    TELEGRAM_API_ID TELEGRAM_API_HASH TELETHON_SESSION; do
+                    TELEGRAM_API_ID TELEGRAM_API_HASH TELETHON_SESSION \
+                    GROQ_API_KEY; do
             value="${!var}"
             if [ -z "$value" ]; then
               echo "  $var: MISSING"
@@ -101,9 +110,17 @@ jobs:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           BOT_OWNER_ID: ${{ secrets.BOT_OWNER_ID }}
           HASH_SALT: ${{ secrets.HASH_SALT }}
+          # LF3 runs against Groq's free tier in the cloud. Get a key at
+          # console.groq.com, save it as the GROQ_API_KEY secret. Without it
+          # LF3 abstains gracefully and the digest still delivers.
+          LLM_PROVIDER: groq
+          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+          GROQ_MODEL: llama-3.3-70b-versatile
         run: |
-          if [ "${{ inputs.deep }}" = "true" ]; then
-            python agent/cloud_digest.py --deep
-          else
+          # Scheduled runs have no `inputs.*` context, so default to --deep
+          # (Groq is fast and free-tier is plenty for a mid-band pass).
+          if [ "${{ inputs.deep }}" = "false" ]; then
             python agent/cloud_digest.py
+          else
+            python agent/cloud_digest.py --deep
           fi

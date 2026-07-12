@@ -7,8 +7,12 @@
 *.session
 *.session-journal
 
-# Local data (raw archive + SQLite + anonymized exports)
-data/
+# Local data (raw archive + SQLite + anonymized exports).
+# Everything in data/ is gitignored EXCEPT data/verdicts.jsonl - that file is
+# the analyst feedback loop (LF4). Committing it lets the cloud digest use
+# your local verdicts on the next scheduled run (agent/README.md explains).
+data/*
+!data/verdicts.jsonl
 exports/
 
 # Python / Jupyter

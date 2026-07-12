@@ -67,11 +67,32 @@ Two layers, add them in order.
 > ה-`TELETHON_SESSION` היא הרשאת גישה מלאה לחשבון. אל תדביק אותה בשום קובץ
 > בריפו - רק בתיבת הסוד המוצפנת של GitHub.
 
+### שלב 3 - ניקוד עדין עם LLM בענן (חינם, ~2 דקות)
+
+בלי LLM, LF3 נמנע (`abstain`) וכל ההודעות ה"אמצע-סקאלה" מקבלות אותו ציון גס.
+עם LLM אפשר לדרג ברמת פרט. Ollama לא רץ ב-GitHub Actions (אין GPU), אבל
+**Groq API** נותן `llama-3.3-70b-versatile` חינם ומהיר (~30 בקשות/דקה).
+
+1. פתח חשבון ב-[console.groq.com](https://console.groq.com) (Google login עובד).
+2. `Keys` → `Create API Key` → העתק את המפתח שמתחיל ב-`gsk_...`.
+3. הוסף אותו כסוד ב-GitHub:
+   | שם הסוד | ערך |
+   |---|---|
+   | `GROQ_API_KEY` | המפתח `gsk_...` |
+4. הריצה הבאה תלך אוטומטית ב-`--deep`, LF3 יבצע סיווג עם ה-LLM על הודעות
+   האמצע-סקאלה, וה-`p_recruitment` יקבל דירוג עדין הרבה יותר.
+
+> אם אין `GROQ_API_KEY` - LF3 פשוט נמנע, הכל ממשיך לעבוד בלי דירוג עדין. אין
+> שבירה. כדי לחזור לברירת מחדל "מהיר בלי LLM", שנה ב-`Actions` את הפרמטר
+> `deep` ל-`false` בהפעלה ידנית.
+
 ### הערות
 - הריפו ציבורי, לכן ה-DB **לעולם לא נשמר בתוכו** (יש בו תוכן הודעות). הוא נשמר
   ב-cache פרטי של Actions בין ריצות - "מאמץ מיטבי", לא ערובה.
-- אין עלות: ל-public repos דקות Actions הן חינם, וה-LLM לא רץ בענן (אין Ollama),
-  כך שהעלות תמיד $0.
+- `data/verdicts.jsonl` **כן** מסונכרן דרך הריפו (ראה הלולאה עם הבוט המקומי
+  ב-[README.md](README.md)) - זה מאפשר ל-LF4 ללמוד מ-verdicts שלך גם בענן.
+- אין עלות: ל-public repos דקות Actions חינם, Groq free-tier מספיק לחודש
+  שבועיים ריצות מלאות ב-deep.
 - **למה לא Dify/n8n/LangChain?** הם כלי אורקסטרציה למי שאין לו pipeline.
   אצלך ה-pipeline כבר כתוב ב-Python (`pipeline.py`), והם לא פותרים את בעיית
   "מכונה שדולקת" - היו רק מוסיפים שכבה מיותרת.
@@ -100,6 +121,10 @@ it then runs on the cron schedule.
 **Layer 2 (real collection):** run `python agent/collect_headless.py --login`
 once locally, then add `TELEGRAM_API_ID`, `TELEGRAM_API_HASH`, and
 `TELETHON_SESSION` secrets. Collection self-skips if they are absent.
+
+**Layer 3 (LLM scoring in the cloud):** add `GROQ_API_KEY` (free at
+[console.groq.com](https://console.groq.com)) and LF3 runs `llama-3.3-70b`
+on the mid-band. Absent key = LF3 abstains cleanly.
 
 **Live interactive commands** (`/scan` on demand) need an always-on host -
 Oracle Cloud Always Free or a Raspberry Pi running `agent/telegram_bot.py`.
