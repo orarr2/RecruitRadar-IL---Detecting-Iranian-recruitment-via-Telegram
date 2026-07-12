@@ -18,6 +18,11 @@ on:
     # In winter (UTC+2) these shift to 11:00 and 19:00 Israel time.
     - cron: "0 9,17 * * *"
   workflow_dispatch:
+    inputs:
+      reset_sent:
+        description: "Wipe sent_leads before delivering (re-ships every currently-flagged lead). Leave false for the normal 'only new since last digest' behavior."
+        type: boolean
+        default: false
 
 # Don't let two runs overlap (they share the same DB cache).
 concurrency:
@@ -105,4 +110,8 @@ jobs:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           BOT_OWNER_ID: ${{ secrets.BOT_OWNER_ID }}
           HASH_SALT: ${{ secrets.HASH_SALT }}
+          # Present + non-empty = wipe sent_leads before scoring. Only settable
+          # from a manual "Run workflow" dispatch, so scheduled runs are never
+          # accidentally forced to re-ship the whole backlog.
+          RESET_SENT_LEADS: ${{ inputs.reset_sent && '1' || '' }}
         run: python agent/cloud_digest.py

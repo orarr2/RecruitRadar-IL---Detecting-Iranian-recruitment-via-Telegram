@@ -52,6 +52,18 @@ def main():
     if not tb.api("getMe").get("ok"):
         sys.exit("Telegram rejected the token - check the TELEGRAM_BOT_TOKEN secret.")
 
+    # Manual "reset_sent" dispatch input asks us to re-ship every currently
+    # flagged lead. Wipe sent_leads BEFORE scoring so unsent_flagged returns
+    # the whole backlog.
+    if os.getenv("RESET_SENT_LEADS", "").strip():
+        import sqlite3
+        conn = sqlite3.connect(pipeline.DB_PATH)
+        n = conn.execute("SELECT COUNT(*) FROM sent_leads").fetchone()[0]
+        conn.execute("DELETE FROM sent_leads")
+        conn.commit()
+        conn.close()
+        print(f"RESET_SENT_LEADS: wiped {n} sent-leads records before scoring.")
+
     print("Scanning ...")
     summary = pipeline.run_pipeline()
     print(f"Run {summary['run_id']}: {summary['n_messages']} messages, "
