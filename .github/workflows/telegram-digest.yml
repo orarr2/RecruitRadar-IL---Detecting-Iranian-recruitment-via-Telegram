@@ -57,6 +57,29 @@ jobs:
           restore-keys: |
             recruitradar-data-
 
+      # Report which secrets actually reached the runner. GitHub auto-redacts
+      # secret values in logs, so we deliberately only print lengths - never
+      # content. This makes "the secret is set but wrong / in the wrong tab"
+      # visible from the Actions log alone.
+      - name: Diagnose secrets
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          BOT_OWNER_ID: ${{ secrets.BOT_OWNER_ID }}
+          HASH_SALT: ${{ secrets.HASH_SALT }}
+          TELEGRAM_API_ID: ${{ secrets.TELEGRAM_API_ID }}
+          TELEGRAM_API_HASH: ${{ secrets.TELEGRAM_API_HASH }}
+          TELETHON_SESSION: ${{ secrets.TELETHON_SESSION }}
+        run: |
+          for var in TELEGRAM_BOT_TOKEN BOT_OWNER_ID HASH_SALT \
+                    TELEGRAM_API_ID TELEGRAM_API_HASH TELETHON_SESSION; do
+            value="${!var}"
+            if [ -z "$value" ]; then
+              echo "  $var: MISSING"
+            else
+              echo "  $var: set (${#value} chars)"
+            fi
+          done
+
       - name: Install dependencies
         # Light set only - fast and enough for scoring. Snorkel/torch are
         # optional; pipeline.py falls back to a weighted vote without them.
