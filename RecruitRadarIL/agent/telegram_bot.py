@@ -6,14 +6,14 @@ app on your phone. It uses long-polling - the script reaches OUT to Telegram's
 servers - so it needs no public IP and no port forwarding. As long as this
 machine is on and online, you can command it from anywhere.
 
-The bot is only a remote control + inbox: the actual scoring runs here, locally,
-against data/recruitradar.db and your local Ollama. Nothing is sent anywhere
-except the summary messages you asked for.
+The bot is only a remote control + inbox: the actual scoring runs here,
+locally, against data/recruitradar.db. Scoring is rule- and statistics-driven
+only (no LLM decides anything, no model is trained on message content).
 
 Commands (also registered so Telegram shows hints):
-  /scan          re-score the corpus: rules + appearance + label model + discovery
-  /scan deep     same, but also run the local LLM on the undecided mid-band (slow on CPU)
-  /top [N]       top N leads by p_recruitment (default 10)
+  /scan          re-score the corpus and receive the new-leads CSV
+  /top [N]       quick text preview of top N flagged messages (does NOT mark
+                 them as sent - use for browsing without exhausting the queue)
   /proposals     pending channel-discovery proposals
   /approve NAME  approve a proposed channel (adds it to channels_extra.txt)
   /reject NAME   reject a proposed channel
@@ -30,11 +30,13 @@ Setup (once):
 Everything it surfaces is a lead for review, not a conclusion.
 """
 
+import io
 import os
 import sys
 import time
 import threading
 from pathlib import Path
+from datetime import datetime, timezone
 
 import requests
 
@@ -69,9 +71,8 @@ _scan_lock = threading.Lock()
 
 HELP = (
     "RecruitRadar-IL control bot\n\n"
-    "/scan - re-score the corpus (fast)\n"
-    "/scan deep - also run the local LLM on the mid-band (slow on CPU)\n"
-    "/top [N] - top N leads (default 10)\n"
+    "/scan - re-score the corpus and get the new-leads CSV\n"
+    "/top [N] - quick text preview of top N flagged (does not mark as sent)\n"
     "/proposals - pending channel proposals\n"
     "/approve NAME - approve a proposed channel\n"
     "/reject NAME - reject a proposed channel\n"
@@ -100,22 +101,39 @@ def send(chat_id, text):
             text, chunk = chunk[cut:] + text, chunk[:cut]
         r = api("sendMessage", chat_id=chat_id, text=chunk)
         # Surface Telegram-side failures instead of dropping messages silently -
-        # e.g. 429 rate limit, blocked chat, or a bad chat_id. Printed to the
-        # workflow log so the failure is visible without inspecting the API.
+        # e.g. 429 rate limit, blocked chat, or a bad chat_id.
         if not r.get("ok"):
             print(f"[send] telegram rejected: {r.get('error_code')} "
                   f"{r.get('description')} (chat_id={chat_id}, "
                   f"chunk_len={len(chunk)})")
 
 
+def send_document(chat_id, filename, content_bytes, caption=None):
+    """Upload a file to the chat via sendDocument. Multipart, not JSON."""
+    try:
+        files = {"document": (filename, content_bytes, "text/csv")}
+        data = {"chat_id": chat_id}
+        if caption:
+            data["caption"] = caption
+        r = requests.post(f"{API}/sendDocument", data=data, files=files, timeout=120)
+        j = r.json()
+    except requests.RequestException as e:
+        print(f"[send_document] {e}")
+        return {"ok": False}
+    if not j.get("ok"):
+        print(f"[send_document] telegram rejected: {j.get('error_code')} "
+              f"{j.get('description')} (chat_id={chat_id}, filename={filename})")
+    return j
+
+
 def _snippet(s, n=90):
     return " ".join((s or "").split())[:n]
 
 
-def fmt_leads(leads):
+def fmt_leads_preview(leads):
     if not leads:
-        return "No leads yet - run /scan first."
-    out = [f"Top {len(leads)} leads by p_recruitment:\n"]
+        return "No leads at or above p>=0.5 - run /scan first."
+    out = [f"Top {len(leads)} flagged (preview, not marked as sent):\n"]
     for i, r in enumerate(leads, 1):
         out.append(f"{i}. p={r['p']:.3f}  [{r['channel']}]\n   {_snippet(r['text'])}")
     return "\n".join(out)
@@ -136,31 +154,62 @@ def fmt_status(m):
     return (f"Last run {m['run_id']}\n"
             f"messages: {m['n_messages']} | channels: {m['n_channels']}\n"
             f"LF coverage: {m['lf_coverage']:.0%}\n"
-            f"flagged (p>=0.5): {m.get('n_flagged', '-')}\n"
+            f"flagged total (p>=0.5): {m.get('n_flagged', '-')}\n"
             f"pending proposals: {m['n_proposals_pending']}\n"
             f"verdicts so far: {m['n_verdicts']}\n"
-            f"label model: {m['label_model']}\n"
-            f"llm: {m['llm_calls']} calls"
-            + (f" (skipped: {m['llm_skipped']})" if m.get('llm_skipped') else ""))
+            f"label model: {m['label_model']}")
 
 
-def do_scan(chat_id, deep):
+def build_digest_caption(summary, n_new):
+    """Short caption that ships with the CSV attachment."""
+    return (f"RecruitRadar-IL digest\n"
+            f"run {summary['run_id']}\n"
+            f"{n_new} new leads (p>=0.5) since last digest\n"
+            f"{summary['n_messages']} messages scanned across "
+            f"{summary['n_channels']} channels\n"
+            f"verdicts so far: {summary['n_verdicts']}")
+
+
+def build_csv_bytes(df):
+    """Encode the unsent-leads DataFrame as UTF-8 CSV (BOM for Excel)."""
+    buf = io.StringIO()
+    df.to_csv(buf, index=False)
+    return ("﻿" + buf.getvalue()).encode("utf-8")
+
+
+def deliver_digest(chat_id, summary):
+    """Ship (status text + CSV of unsent flagged leads) to `chat_id`. Marks
+    every lead sent afterward. If there are no new leads, sends NOTHING and
+    prints a note to the log."""
+    fresh = pipeline.unsent_flagged()
+    n_new = len(fresh)
+    if n_new == 0:
+        print(f"[digest] no new leads to send (chat={chat_id})")
+        return 0
+    caption = build_digest_caption(summary, n_new)
+    filename = f"recruitradar-leads-{datetime.now(timezone.utc):%Y%m%d-%H%M}.csv"
+    csv_bytes = build_csv_bytes(fresh)
+    r = send_document(chat_id, filename, csv_bytes, caption=caption)
+    if r.get("ok"):
+        pairs = list(zip(fresh["channel"], fresh["msg_id"]))
+        pipeline.mark_sent(pairs)
+        print(f"[digest] delivered {n_new} leads (chat={chat_id}, file={filename})")
+    return n_new
+
+
+def do_scan(chat_id):
     if not _scan_lock.acquire(blocking=False):
         send(chat_id, "A scan is already running - hold on.")
         return
     try:
-        send(chat_id, f"Scanning{' (deep, LLM on - this can take a while on CPU)' if deep else ''}...")
-        prog = {"last": 0}
-
-        def on_progress(i, total):
-            # throttle progress pings so we do not spam the chat
-            if i - prog["last"] >= 100 or i == total:
-                prog["last"] = i
-                send(chat_id, f"  LLM {i}/{total} classified...")
-
-        summary = pipeline.run_pipeline(use_llm=deep, on_progress=on_progress)
-        send(chat_id, "Scan complete.\n\n" + fmt_status(summary))
-        send(chat_id, fmt_leads(pipeline.top_leads(5)))
+        send(chat_id, "Scanning...")
+        summary = pipeline.run_pipeline()
+        n_new = deliver_digest(chat_id, summary)
+        if n_new == 0:
+            # /scan initiated by a human deserves an explicit acknowledgement,
+            # unlike the cloud cron where silence-when-nothing-new is intended.
+            send(chat_id, "Scan complete - no NEW leads to send this run.\n\n" +
+                 fmt_status(summary))
     except Exception as e:
         send(chat_id, f"Scan failed: {e.__class__.__name__}: {e}")
     finally:
@@ -186,21 +235,20 @@ def handle(update):
             send(chat_id, "This bot is private.")
         return
 
-    # Owner guard for every real command.
     if OWNER is None:
         send(chat_id, "Set BOT_OWNER_ID in agent/.env first (send /start to get your id).")
         return
     if chat_id != OWNER:
-        return  # ignore strangers silently
+        return
 
     if cmd in ("/help", "/menu"):
         send(chat_id, HELP)
     elif cmd == "/scan":
-        threading.Thread(target=do_scan, args=(chat_id, arg.lower() == "deep"),
-                         daemon=True).start()
+        threading.Thread(target=do_scan, args=(chat_id,), daemon=True).start()
     elif cmd == "/top":
         n = int(arg) if arg.isdigit() else 10
-        send(chat_id, fmt_leads(pipeline.top_leads(min(n, 25))))
+        send(chat_id, fmt_leads_preview(pipeline.top_leads(min(n, 25),
+                                                          min_p=pipeline.FLAG_THRESHOLD)))
     elif cmd in ("/proposals", "/discover"):
         send(chat_id, fmt_proposals(pipeline.list_proposals()))
     elif cmd == "/approve":
@@ -232,8 +280,8 @@ def main():
     print(f"Bot @{me['result']['username']} is up. "
           f"Owner: {OWNER if OWNER else 'UNSET - send /start to your bot to learn your id'}.")
     api("setMyCommands", commands=[
-        {"command": "scan", "description": "re-score the corpus (add 'deep' for LLM)"},
-        {"command": "top", "description": "top N leads by p_recruitment"},
+        {"command": "scan", "description": "re-score and get the new-leads CSV"},
+        {"command": "top", "description": "quick preview of top flagged (no send-mark)"},
         {"command": "proposals", "description": "pending channel proposals"},
         {"command": "approve", "description": "approve a proposed channel"},
         {"command": "reject", "description": "reject a proposed channel"},

@@ -1,28 +1,29 @@
 """
 RecruitRadar-IL cloud digest - the GitHub Actions entry point.
 
-Runs one full scoring pass (agent/pipeline.py) and pushes the summary + top
-leads to your Telegram chat via the Bot API. No polling, no long-running
-process: fire, report, exit. Scheduled twice a day by
-.github/workflows/telegram-digest.yml, and runnable on demand from the
-Actions tab (works from the GitHub mobile app too).
+Runs one full scoring pass and delivers the new-leads CSV to your Telegram
+chat via the Bot API. Scoring is entirely rule- and statistics-driven; no LLM
+decides anything, no model is trained on message content.
+
+Delivery rule: only messages that (a) score p_recruitment >= 0.5 and
+(b) have not been included in any previous digest. Once a message goes out
+it is recorded in the sent_leads table and will never appear again - even if
+a later run pushes its p_recruitment higher. If a run finds nothing new,
+the workflow logs it and delivers nothing (silence on the phone).
 
 Environment (set as repository secrets in CI):
   TELEGRAM_BOT_TOKEN   required - the @BotFather token
-  BOT_OWNER_ID         recommended - your chat id. If missing or wrong, the
+  BOT_OWNER_ID         recommended - your chat id. If missing or wrong the
                        script falls back to getUpdates: whoever messaged the
                        bot most recently (within 24h) receives the digest,
-                       together with the chat id to put in the secret.
+                       together with the chat id to save as the secret.
 
 Usage:
-    python agent/cloud_digest.py           # fast scan (no LLM)
-    python agent/cloud_digest.py --deep    # also run the LLM mid-band pass
-                                           # (needs a reachable OLLAMA_HOST;
-                                           #  abstains gracefully without one)
+    python agent/cloud_digest.py
 """
 
-import os
 import sys
+import os
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -30,7 +31,7 @@ os.chdir(ROOT)
 sys.path.insert(0, str(ROOT / "agent"))
 
 import pipeline                 # noqa: E402
-import telegram_bot as tb       # noqa: E402  (send/fmt helpers; main() is guarded)
+import telegram_bot as tb       # noqa: E402  (send/deliver helpers; main() is guarded)
 
 
 def discover_chat_id():
@@ -46,36 +47,38 @@ def discover_chat_id():
 
 
 def main():
-    deep = "--deep" in sys.argv
     if not tb.TOKEN:
         sys.exit("TELEGRAM_BOT_TOKEN is not set - add it as a repository secret.")
     if not tb.api("getMe").get("ok"):
         sys.exit("Telegram rejected the token - check the TELEGRAM_BOT_TOKEN secret.")
 
+    print("Scanning ...")
+    summary = pipeline.run_pipeline()
+    print(f"Run {summary['run_id']}: {summary['n_messages']} messages, "
+          f"{summary['n_flagged']} flagged total (p>=0.5).")
+
+    fresh = pipeline.unsent_flagged()
+    n_new = len(fresh)
+    print(f"Unsent flagged: {n_new}.")
+
+    if n_new == 0:
+        print("Nothing new to deliver - staying silent.")
+        return
+
     chat_id = tb.OWNER or discover_chat_id()
     if chat_id is None:
-        sys.exit("No BOT_OWNER_ID secret and nobody messaged the bot in the last "
-                 "24h, so there is no chat to deliver to. Open Telegram, send the "
-                 "bot /start, and re-run this workflow.")
+        print("No BOT_OWNER_ID and nobody messaged the bot recently, so there is "
+              "no chat to deliver to. Skipping.")
+        return
 
-    print(f"Scanning (deep={deep}) ...")
-    summary = pipeline.run_pipeline(use_llm=deep)
-    print(f"Run {summary['run_id']}: {summary['n_messages']} messages, "
-          f"{summary['n_flagged']} flagged.")
-
-    tb.send(chat_id, "RecruitRadar-IL automatic digest\n\n" + tb.fmt_status(summary))
-    tb.send(chat_id, tb.fmt_leads(pipeline.top_leads(10)))
-    props = pipeline.list_proposals()
-    if props:
-        tb.send(chat_id, tb.fmt_proposals(props) +
-                "\n\nApprove by adding the name to channels_extra.txt (or via "
-                "the local bot's /approve).")
-    if not tb.OWNER:
-        tb.send(chat_id, f"Note: the BOT_OWNER_ID secret is not set (or wrong). "
-                         f"Your chat id is {chat_id} - save it as the "
-                         f"BOT_OWNER_ID repository secret so digests always "
-                         f"reach you directly.")
-    print("Digest delivered.")
+    delivered = tb.deliver_digest(chat_id, summary)
+    if delivered and not tb.OWNER:
+        # Piggy-back a one-off note on the same chat: we found a fallback
+        # recipient via getUpdates; ask them to set the secret so future runs
+        # don't depend on someone messaging the bot in the last 24h.
+        tb.send(chat_id, f"Note: no BOT_OWNER_ID secret is set. Your chat id is "
+                         f"{chat_id} - save it as the BOT_OWNER_ID repository "
+                         f"secret so digests always reach you.")
 
 
 if __name__ == "__main__":
