@@ -40,8 +40,9 @@ jupyter notebook agent/AdaptiveRecruitRadar.ipynb   # run all cells
 streamlit run agent/annotator_app.py                # review the results
 ```
 
-The notebook seeds a synthetic demo corpus when the database is empty, so it
-runs with zero setup. For real data, collect with the main notebook first.
+Collect first with the main notebook or `python agent/collect_headless.py`
+(the cloud workflow does this automatically) - the adaptive layer only scores
+messages that are already in the DB.
 
 ## Drive it from your phone (Telegram bot)
 

@@ -1,10 +1,13 @@
 """
-Runs sections 1, 4-5, 7-10 of RecruitRadarIL.ipynb against the built-in
-synthetic demo. Sections 2 and 6 (Telegram login + bulk collection) are
-skipped - they require live api_id/api_hash and an interactive SMS code.
+Headless analyzer for the RecruitRadar-IL pipeline. Reads whatever messages
+are already in data/recruitradar.db (the notebook or agent/collect_headless.py
+puts them there), scores them, and writes an anonymized review queue plus a
+timeline chart. Sections 2 and 6 of the notebook (Telegram login + bulk
+collection) are skipped - they require live api_id/api_hash and an interactive
+SMS code.
 
 Outputs:
-  data/recruitradar.db        SQLite store (demo rows under channel '__demo__')
+  data/recruitradar.db        SQLite store (populated by the notebook / collector)
   exports/review_queue_*.csv  Anonymized review queue
   exports/timeline.png        Posts-per-day chart
 """
@@ -21,7 +24,7 @@ import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 
-HASH_SALT = os.getenv("HASH_SALT", "demo-salt-not-for-production")
+HASH_SALT = os.getenv("HASH_SALT", "change-me-in-.env")
 
 DATA_DIR = Path("data")
 RAW_DIR = DATA_DIR / "raw"
@@ -60,38 +63,6 @@ def init_db(path=DB_PATH):
     conn.execute("CREATE INDEX IF NOT EXISTS idx_msg_sender  ON messages(sender_hash)")
     conn.commit()
     return conn
-
-
-def seed_demo_if_empty(conn):
-    cur = conn.execute("SELECT COUNT(*) FROM messages WHERE channel='__demo__'")
-    if cur.fetchone()[0] > 0:
-        return
-    print("Seeding synthetic demo rows under channel '__demo__'.")
-    demo = [
-        ("דרוש נהג למשמרות בוקר באזור המרכז, שכר שעתי הוגן.", 900001, "jobs"),
-        ("מחפשים מתאם.ת לוגיסטיקה, ניסיון יתרון.", 900002, "jobs"),
-        ("משימה קטנה וקלה, תשלום מיידי במזומן/קריפטו. פנו בפרטי לטלגרם מאובטח.", 900003, "jobs"),
-        ("צריך מישהו לצלם בניין ולתלות כמה כרזות, כסף קל ומהיר, אנונימי לחלוטין.", 900003, "jobs"),
-        ("טרמפ מתל אביב לחיפה מחר ב-8 בבוקר.", 900004, "rides"),
-        ("מורה פרטי למתמטיקה לכיתה ט', אזור ירושלים.", 900005, "tutoring"),
-        ("עבודה מהבית, רווח גבוה ביום, תשלום בביטקוין, צרו קשר בסיגנל.", 900006, "jobs"),
-        ("דרושים אנשים לצילום מצלמות אבטחה ליד בסיס צבאי, סכום גבוה, מחק אחרי.", 900007, "jobs"),
-        ("טרמפ מחיפה לבאר שבע בשישי.", 900004, "rides"),
-        ("מורה פרטי לאנגלית באזור תל אביב.", 900008, "tutoring"),
-    ]
-    now = datetime.now(timezone.utc)
-    for i, (txt, uid, cat) in enumerate(demo):
-        conn.execute(
-            """INSERT OR IGNORE INTO messages
-               (channel, category, msg_id, date, sender_hash, text, has_media,
-                forwards, views, replies, is_forwarded, collected_at)
-               VALUES (?,?,?,?,?,?,?,?,?,?,?,?)""",
-            ("__demo__", cat, i + 1,
-             (now - timedelta(days=i)).isoformat(),
-             hash_user_id(uid), txt,
-             0, 0, 10 * (i + 1), 0, 0,
-             now.isoformat()))
-    conn.commit()
 
 
 # Kept in sync with the notebook (cell 21). Trilingual patterns
@@ -257,9 +228,13 @@ def apply_rules(text):
 def main():
     conn = init_db()
     print("SQLite ready at", DB_PATH)
-    seed_demo_if_empty(conn)
 
     df = pd.read_sql_query("SELECT * FROM messages", conn, parse_dates=["date"])
+    if df.empty:
+        print("No messages in the DB. Collect first with the notebook or "
+              "`python agent/collect_headless.py`, then re-run.")
+        conn.close()
+        return
     print(f"\n=== Section 7: EDA ===")
     print(f"{len(df)} messages across {df.channel.nunique()} channels, "
           f"{df.sender_hash.nunique()} unique senders.")

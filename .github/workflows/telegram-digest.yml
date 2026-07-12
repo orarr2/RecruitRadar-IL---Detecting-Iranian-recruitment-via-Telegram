@@ -45,10 +45,10 @@ jobs:
         with:
           python-version: "3.11"
 
-      # Persist the SQLite store (and verdicts/metrics) between runs. This is
-      # a private, best-effort cache - it is NEVER committed to the public repo,
-      # so collected message text does not leak. If a run misses the cache it
-      # simply re-seeds the demo corpus and still delivers a digest.
+      # Persist the SQLite store (and metrics) between runs. This is a private,
+      # best-effort cache - it is NEVER committed to the public repo, so
+      # collected message text does not leak. A cache miss just means the
+      # digest runs on whatever the current collection step produces.
       - name: Restore data cache
         uses: actions/cache@v4
         with:
@@ -97,7 +97,7 @@ jobs:
 
       - name: Collect fresh messages (optional)
         # Runs only meaningfully when the three Telegram-user secrets are set;
-        # otherwise it self-skips and the digest scores existing/demo data.
+        # otherwise it self-skips and the digest scores whatever the cache has.
         env:
           TELEGRAM_API_ID: ${{ secrets.TELEGRAM_API_ID }}
           TELEGRAM_API_HASH: ${{ secrets.TELEGRAM_API_HASH }}

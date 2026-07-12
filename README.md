@@ -102,8 +102,8 @@ It reads from `data/recruitradar.db`, scores every message, builds a
 sender-level behavioral feature set, and writes an anonymized review queue to
 `exports/review_queue_<timestamp>.csv` plus a `timeline.png` chart.
 
-If your DB is empty, the script seeds a small synthetic Hebrew sample under
-channel `__demo__` so the whole pipeline runs end-to-end as a demo.
+An empty DB exits cleanly with a note - collect first with the notebook or
+`agent/collect_headless.py`.
 
 ---
 

@@ -64,10 +64,7 @@ def main():
           f"{summary['n_flagged']} flagged.")
 
     tb.send(chat_id, "RecruitRadar-IL automatic digest\n\n" + tb.fmt_status(summary))
-    # exclude_demo=True keeps the synthetic seed rows out of the ranked digest -
-    # they always score p=1.0 (the rules were tuned for them) and would push
-    # every real lead below the fold.
-    tb.send(chat_id, tb.fmt_leads(pipeline.top_leads(10, exclude_demo=True)))
+    tb.send(chat_id, tb.fmt_leads(pipeline.top_leads(10)))
     props = pipeline.list_proposals()
     if props:
         tb.send(chat_id, tb.fmt_proposals(props) +

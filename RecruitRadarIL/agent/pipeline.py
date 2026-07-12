@@ -3,9 +3,9 @@ RecruitRadar-IL adaptive pipeline - importable headless engine.
 
 Same scoring / discovery logic as agent/AdaptiveRecruitRadar.ipynb, packaged as
 plain functions so the Telegram bot (and cron, and the notebook) can drive it
-without a UI. Live Telegram collection stays in the main notebook; this engine
-scores and ranks whatever is already in data/recruitradar.db (seeding a small
-demo corpus when the DB is empty), fits the Snorkel label model, refreshes the
+without a UI. Live Telegram collection stays in the main notebook or
+agent/collect_headless.py; this engine scores and ranks whatever is already
+in data/recruitradar.db, fits the Snorkel label model, refreshes the
 channel-discovery proposals, and writes the exports.
 
 Everything it produces is a lead for review, not a conclusion.
@@ -32,7 +32,7 @@ import pandas as pd
 ROOT = Path(__file__).resolve().parent.parent
 os.chdir(ROOT)
 sys.path.insert(0, str(ROOT))
-import run_offline as base   # RULES / apply_rules / init_db / seed_demo_if_empty
+import run_offline as base   # RULES / apply_rules / init_db / hash_user_id
 
 
 # ── Configuration (mirrors the notebook; override in agent/.env) ─────────────
@@ -130,7 +130,6 @@ RESERVED = {"addlist", "joinchat", "share", "proxy", "socks", "iv", "boost"}
 def _connect():
     conn = base.init_db(DB_PATH)
     conn.executescript(SCHEMA)
-    base.seed_demo_if_empty(conn)
     conn.commit()
     return conn
 
@@ -399,14 +398,14 @@ def _retention(conn):
     if RETENTION_DAYS <= 0:
         return 0
     cutoff = (datetime.now(timezone.utc) - timedelta(days=RETENTION_DAYS)).isoformat()
-    old = conn.execute("SELECT COUNT(*) FROM messages WHERE date < ? AND channel != '__demo__'",
+    old = conn.execute("SELECT COUNT(*) FROM messages WHERE date < ?",
                        (cutoff,)).fetchone()[0]
     if old:
         for tbl in ("lf_votes", "snorkel_labels"):
             conn.execute(f"""DELETE FROM {tbl} WHERE (channel, msg_id) IN
-                (SELECT channel, msg_id FROM messages WHERE date < ? AND channel != '__demo__')""",
+                (SELECT channel, msg_id FROM messages WHERE date < ?)""",
                          (cutoff,))
-        conn.execute("DELETE FROM messages WHERE date < ? AND channel != '__demo__'", (cutoff,))
+        conn.execute("DELETE FROM messages WHERE date < ?", (cutoff,))
         conn.commit()
     return old
 
@@ -468,17 +467,16 @@ def run_pipeline(use_llm=False, on_progress=None):
     return metrics
 
 
-def top_leads(n=10, min_p=0.0, exclude_demo=False):
+def top_leads(n=10, min_p=0.0):
     """Return the top-n messages by p_recruitment as plain dicts."""
     conn = _connect()
-    q = """SELECT s.channel, s.msg_id, s.p_recruitment, m.category, m.date, m.text
+    rows = conn.execute(
+        """SELECT s.channel, s.msg_id, s.p_recruitment, m.category, m.date, m.text
            FROM snorkel_labels s JOIN messages m
              ON s.channel=m.channel AND s.msg_id=m.msg_id
-           WHERE s.p_recruitment IS NOT NULL AND s.p_recruitment >= ?"""
-    if exclude_demo:
-        q += " AND s.channel != '__demo__'"
-    q += " ORDER BY s.p_recruitment DESC LIMIT ?"
-    rows = conn.execute(q, (min_p, int(n))).fetchall()
+           WHERE s.p_recruitment IS NOT NULL AND s.p_recruitment >= ?
+           ORDER BY s.p_recruitment DESC LIMIT ?""",
+        (min_p, int(n))).fetchall()
     conn.close()
     return [{"channel": r[0], "msg_id": r[1], "p": r[2], "category": r[3],
              "date": r[4], "text": r[5] or ""} for r in rows]
