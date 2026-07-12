@@ -168,8 +168,14 @@ async def _collect():
     channels = load_channels()
     cutoff = datetime.now(timezone.utc) - timedelta(days=DAYS_BACK)
     total = 0
+    # Per-channel outcome tally so a run leaves an unambiguous record of which
+    # seeds are live vs. dead vs. private, printed at the end.
+    outcomes = {"alive": [], "no_new_messages": [], "not_occupied": [],
+                "private_or_forbidden": [], "flood_wait": [], "error": []}
     for channel, category in channels:
         n = 0
+        outcome = None
+        detail = ""
         try:
             async for m in client.iter_messages(channel, limit=MAX_PER_CHANNEL):
                 if m.date and m.date.astimezone(timezone.utc) < cutoff:
@@ -178,20 +184,44 @@ async def _collect():
                 n += 1
                 await asyncio.sleep(SLEEP_BETWEEN)
             conn.commit()
+            outcome = "alive" if n > 0 else "no_new_messages"
         except FloodWaitError as e:
-            print(f"  FloodWait on {channel}: sleeping {e.seconds}s")
+            outcome = "flood_wait"
+            detail = f"sleep {e.seconds}s"
             await asyncio.sleep(e.seconds + 1)
             conn.commit()
-        except (ChannelPrivateError, UsernameNotOccupiedError, ValueError):
-            print(f"  skip {channel} (unavailable)")
+        except UsernameNotOccupiedError:
+            outcome = "not_occupied"
+        except ChannelPrivateError:
+            outcome = "private_or_forbidden"
+        except ValueError as e:
+            # Telethon raises ValueError for "No user has 'foo' as username" too,
+            # so treat as not_occupied unless the message says otherwise.
+            msg = str(e).lower()
+            if "no user has" in msg or "no entity" in msg:
+                outcome = "not_occupied"
+            else:
+                outcome = "error"
+                detail = e.__class__.__name__
         except Exception as e:
-            print(f"  ERROR {channel}: {e.__class__.__name__}")
+            outcome = "error"
+            detail = f"{e.__class__.__name__}: {str(e)[:80]}"
+        entry = f"{channel}" + (f" (+{n})" if n else "") + (f" [{detail}]" if detail else "")
+        outcomes[outcome].append(entry)
         if n:
             print(f"  {channel}: +{n}")
         total += n
+
     conn.close()
     await client.disconnect()
-    print(f"Collection done: {total} new messages across {len(channels)} channels.")
+
+    # Diagnostic footer - one line per outcome group so the workflow log tells
+    # us at a glance which channels are alive, which are dead, and which need
+    # attention. Live channels stay implicit (they already printed +N above).
+    print(f"\nCollection done: {total} new messages across {len(channels)} channels.")
+    print("--- per-channel outcomes ---")
+    for group, entries in outcomes.items():
+        print(f"  {group} ({len(entries)}): {', '.join(entries) if entries else '-'}")
 
 
 async def _login():
