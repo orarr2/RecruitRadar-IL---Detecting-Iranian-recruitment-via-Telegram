@@ -1,5 +1,5 @@
-# Extra channels - loaded automatically by section 3 of the notebook.
-# One per line:   username, category      (the @ is optional)
+# Extra channels - loaded by the notebook (section 3) and by
+# agent/collect_headless.py. One per line: `username, category`  (the @ is optional).
 # Lines starting with # are ignored. Unknown categories are kept as-is.
 #
 # Valid categories:
@@ -7,9 +7,26 @@
 #   photo_video help_offers trips_travel yad2 marketplace furniture
 #   crypto_exchange rides tutoring
 #
-# Paste the channels from your list below, e.g.:
-#   rabotaisraeli, jobs_il
-#   izrail_avito, marketplace
-#   freelancim, freelance
-#   obmen_valut_israel, crypto_exchange
+# ── Curated recruitment-niche candidates (verified via public directories) ──
+# Rule: recruitment / gigs / freelance / marketplace channels ONLY. No news
+# channels of any kind. Live/dead status is checked by the collector's
+# per-channel diagnostic on each run; prune whichever come back as
+# not_occupied or private_or_forbidden.
 
+# Russian-language jobs & gigs for Russian-speaking Israelis - one of the
+# most-targeted demographics per public reports.
+newjobisrael,   jobs_il
+Olim_Jobs,      jobs_il
+israel_job1,    jobs_il
+stroika_chat,   field_work
+
+# Hebrew-language job boards and gig channels. jobsHOTjobss explicitly
+# includes gray-market / cash-in-hand work, which is exactly the kind of
+# channel a covert task-recruitment ad would try to hide in.
+Jobs_in_Jerusalem, jobs_il
+jobsHOTjobss,      jobs_il
+
+# Remote / from-home / hi-tech - other demographics recruitment ads target.
+Online_Work_Home_Jobs, freelance
+remotejobss,           freelance
+hitechil,              jobs_it
