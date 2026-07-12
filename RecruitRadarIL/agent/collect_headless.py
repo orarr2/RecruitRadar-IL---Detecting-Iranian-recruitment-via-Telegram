@@ -57,10 +57,12 @@ def _load_env(path):
 _load_env(ROOT / ".env")
 _load_env(ROOT / "agent" / ".env")
 
-# Collection window / caps (override via env). Kept conservative so a cloud run
-# stays well inside Telegram's read limits and GitHub's job timeout.
-DAYS_BACK       = int(os.getenv("COLLECT_DAYS_BACK", "3"))
-MAX_PER_CHANNEL = int(os.getenv("COLLECT_MAX_PER_CHANNEL", "200"))
+# Collection window / caps (override via env). 14 days back with a 500-msg
+# per-channel ceiling gives us two weeks of history on slow channels and
+# roughly a week on the busiest ones, while staying well inside Telegram's
+# read limits and GitHub's 20-minute job timeout.
+DAYS_BACK       = int(os.getenv("COLLECT_DAYS_BACK", "14"))
+MAX_PER_CHANNEL = int(os.getenv("COLLECT_MAX_PER_CHANNEL", "500"))
 SLEEP_BETWEEN   = float(os.getenv("COLLECT_SLEEP", "0.05"))
 
 # Seed registry - a SNAPSHOT of the notebook's CHANNELS (section 3). The live
