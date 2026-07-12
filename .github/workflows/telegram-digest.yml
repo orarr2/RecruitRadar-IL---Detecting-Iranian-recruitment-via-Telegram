@@ -1,0 +1,85 @@
+name: RecruitRadar-IL digest
+
+# Runs the scoring pipeline in the cloud (no laptop needed) and pushes the
+# summary + top leads to your Telegram chat. Free for public repos.
+#
+# Two ways it fires:
+#   • schedule   - automatically, twice a day (08:00 and 20:00 Israel time)
+#   • manually   - the "Run workflow" button on the Actions tab, which also
+#                  works from the GitHub mobile app
+#
+# Required repository secret:  TELEGRAM_BOT_TOKEN
+# Recommended repository secret: BOT_OWNER_ID (your Telegram chat id)
+# (Settings -> Secrets and variables -> Actions -> New repository secret)
+
+on:
+  schedule:
+    # cron is in UTC. 05:00 and 17:00 UTC = 08:00 and 20:00 Israel (UTC+3, DST).
+    - cron: "0 5,17 * * *"
+  workflow_dispatch:
+    inputs:
+      deep:
+        description: "Also run the LLM mid-band pass (needs OLLAMA_HOST; usually leave false)"
+        type: boolean
+        default: false
+
+# Don't let two runs overlap (they share the same DB cache).
+concurrency:
+  group: recruitradar-digest
+  cancel-in-progress: false
+
+jobs:
+  digest:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: RecruitRadarIL
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      # Persist the SQLite store (and verdicts/metrics) between runs. This is
+      # a private, best-effort cache - it is NEVER committed to the public repo,
+      # so collected message text does not leak. If a run misses the cache it
+      # simply re-seeds the demo corpus and still delivers a digest.
+      - name: Restore data cache
+        uses: actions/cache@v4
+        with:
+          path: RecruitRadarIL/data
+          key: recruitradar-data-${{ github.run_id }}
+          restore-keys: |
+            recruitradar-data-
+
+      - name: Install dependencies
+        # Light set only - fast and enough for scoring. Snorkel/torch are
+        # optional; pipeline.py falls back to a weighted vote without them.
+        # Telethon powers the optional headless collector.
+        run: pip install --quiet pandas numpy scikit-learn requests matplotlib telethon
+
+      - name: Collect fresh messages (optional)
+        # Runs only meaningfully when the three Telegram-user secrets are set;
+        # otherwise it self-skips and the digest scores existing/demo data.
+        env:
+          TELEGRAM_API_ID: ${{ secrets.TELEGRAM_API_ID }}
+          TELEGRAM_API_HASH: ${{ secrets.TELEGRAM_API_HASH }}
+          TELETHON_SESSION: ${{ secrets.TELETHON_SESSION }}
+          HASH_SALT: ${{ secrets.HASH_SALT }}
+        run: python agent/collect_headless.py
+
+      - name: Run scan and push digest to Telegram
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          BOT_OWNER_ID: ${{ secrets.BOT_OWNER_ID }}
+          HASH_SALT: ${{ secrets.HASH_SALT }}
+        run: |
+          if [ "${{ inputs.deep }}" = "true" ]; then
+            python agent/cloud_digest.py --deep
+          else
+            python agent/cloud_digest.py
+          fi
