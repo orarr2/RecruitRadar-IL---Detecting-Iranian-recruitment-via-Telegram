@@ -12,7 +12,7 @@ current pipeline is rules + IsolationForest + verdicts + Snorkel only).
 |---|---|
 | **D1** | Channel discovery: mines already-collected messages for `@usernames` / `t.me/...` links, scores candidates by rule base-rate × cross-channel centrality, and proposes up to 20 per run. Nothing is collected until a human approves. |
 | **D2** | Closed feedback loop: rules, IsolationForest and the analyst's own verdicts all become Labeling Functions; a Snorkel label model learns their accuracies from the data and emits `p_recruitment` per message. Verdicts persist, so the system sharpens with every review session. |
-| **D3** | CSV digest delivered to Telegram: each run ships one file with the leads that scored `p_recruitment >= 0.5` **and** were not shipped in any previous digest. Once a lead ships, it is recorded in `sent_leads` and never resurfaces. |
+| **D3** | CSV digest delivered to Telegram: each run ships one file with the leads that scored `p_recruitment >= 0.5` **and** were not shipped in any previous digest. Russian rows are auto-translated to Hebrew (Google Translate, cached per message) and the `text` cell is word-wrapped for phone-readable display. Once a lead ships, it is recorded in `sent_leads` and never resurfaces. |
 
 **No LLM decides whether a message is recruitment.** No model is trained on
 message content. Scoring is entirely rule- and statistics-driven.

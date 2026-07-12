@@ -170,8 +170,52 @@ def build_digest_caption(summary, n_new):
             f"verdicts so far: {summary['n_verdicts']}")
 
 
+def _wrap_paragraph(s, width=55):
+    """Insert soft newlines at word boundaries so a spreadsheet or Telegram's
+    inline CSV preview shows the cell as a compact paragraph instead of one
+    long horizontal line. Preserves existing paragraph breaks."""
+    import textwrap
+    if not s:
+        return s
+    out = []
+    for para in str(s).split("\n"):
+        para = para.strip()
+        if not para:
+            out.append("")
+            continue
+        out.append(textwrap.fill(para, width=width, break_long_words=False,
+                                 break_on_hyphens=False, replace_whitespace=False))
+    return "\n".join(out)
+
+
+# CSV column order: cheapest-to-scan first (score, when, where), then Hebrew
+# translation (when the original is Russian), then the original text. Trailing
+# columns are metadata a reader rarely opens.
+CSV_COLS = ["p_recruitment", "date", "channel", "text_he",
+            "text", "category", "rule_hits", "sender_hash", "msg_id"]
+
+
 def build_csv_bytes(df):
-    """Encode the unsent-leads DataFrame as UTF-8 CSV (BOM for Excel)."""
+    """Encode the unsent-leads DataFrame as UTF-8 CSV (BOM for Excel).
+
+    * Translates Russian rows to Hebrew into a new `text_he` column.
+    * Word-wraps both `text` and `text_he` so the cells display as compact
+      paragraphs instead of one very long horizontal line.
+    * Reorders columns short-first, long-last.
+    """
+    df = df.copy()
+    # Translation - only Russian rows; others leave text_he empty.
+    df["text_he"] = pipeline.translate_series(df["text"])
+    # Wrap both language columns so the display is a paragraph, not a horizontal
+    # line. width=55 fits comfortably on a phone-width column.
+    df["text"] = df["text"].map(_wrap_paragraph)
+    df["text_he"] = df["text_he"].map(_wrap_paragraph)
+    # Any columns present but not in CSV_COLS get dropped; any listed but
+    # missing are created empty so the header shape is stable.
+    for col in CSV_COLS:
+        if col not in df.columns:
+            df[col] = ""
+    df = df[CSV_COLS]
     buf = io.StringIO()
     df.to_csv(buf, index=False)
     return ("﻿" + buf.getvalue()).encode("utf-8")

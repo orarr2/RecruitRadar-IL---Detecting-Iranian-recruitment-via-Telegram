@@ -5,6 +5,11 @@ scikit-learn
 requests
 streamlit
 
+# Russian -> Hebrew auto-translation of the digest CSV. Uses Google
+# Translate's public endpoint (no API key). Absence is tolerated - text_he
+# stays empty and the original text still ships.
+deep-translator
+
 # Optional but recommended: the Snorkel label model (pulls in torch - large
 # download). Without it the notebook falls back to a weighted vote.
 snorkel

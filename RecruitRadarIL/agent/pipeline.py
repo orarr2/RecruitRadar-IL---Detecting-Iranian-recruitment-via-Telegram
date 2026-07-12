@@ -85,6 +85,9 @@ CREATE TABLE IF NOT EXISTS channel_proposals (
 CREATE TABLE IF NOT EXISTS sent_leads (
     channel TEXT NOT NULL, msg_id INTEGER NOT NULL, sent_at TEXT,
     PRIMARY KEY (channel, msg_id));
+CREATE TABLE IF NOT EXISTS translation_cache (
+    text_hash TEXT PRIMARY KEY, source_lang TEXT, target_lang TEXT,
+    translation TEXT, ts TEXT);
 """
 
 URL_RE     = re.compile(r"https?://|t\.me/|www\.")
@@ -109,6 +112,15 @@ def _connect():
     # that is not in the current schema. Drop it so a clean start is
     # guaranteed even without wiping the cache.
     conn.execute("DROP TABLE IF EXISTS llm_cache")
+    # An old cache may also still contain synthetic rows that a previous
+    # pipeline version seeded under channel '__demo__'. Wipe them defensively
+    # every time we connect - real runs never insert into this channel, so
+    # this is a no-op on a clean corpus.
+    for tbl in ("lf_votes", "snorkel_labels", "sent_leads", "messages"):
+        try:
+            conn.execute(f"DELETE FROM {tbl} WHERE channel = '__demo__'")
+        except sqlite3.OperationalError:
+            pass
     conn.commit()
     return conn
 
@@ -451,6 +463,114 @@ def approve_channel(name):
 
 def reject_channel(name):
     return _decide_proposal(name, "rejected")
+
+
+# ── Russian → Hebrew translation (Google Translate) ──────────────────────────
+# Messages from RU-language channels dominate the collected corpus. Reading a
+# CSV in Cyrillic is slow work for a Hebrew reader; auto-translation makes the
+# digest actionable at a glance. Trade-off (accepted): message text is sent to
+# Google Translate's public endpoint over TLS; deep-translator handles the
+# request without an API key. Cache aggressively so repeat runs stay free
+# (in latency, since the endpoint is free either way).
+
+_TRANSLATOR = None
+def _translator():
+    """Lazy-load deep-translator to keep pipeline import light when translation
+    is not needed (e.g. the plain /top text preview)."""
+    global _TRANSLATOR
+    if _TRANSLATOR is not None:
+        return _TRANSLATOR
+    try:
+        from deep_translator import GoogleTranslator
+        # 'iw' is Google's historical code for Hebrew ('he' also works on
+        # modern deployments, but 'iw' is what deep-translator canonically uses).
+        _TRANSLATOR = GoogleTranslator(source="ru", target="iw")
+        return _TRANSLATOR
+    except Exception as e:
+        print(f"[translate] deep-translator unavailable: {e.__class__.__name__} {e}")
+        return None
+
+
+def _text_hash(t):
+    import hashlib
+    return hashlib.sha256((t or "").encode("utf-8")).hexdigest()
+
+
+def _is_russian(text):
+    """Heuristic: at least 10 letters total and >= 40% of them Cyrillic."""
+    if not text:
+        return False
+    cyr = len(CYR_RE.findall(text))
+    heb = len(HEB_RE.findall(text))
+    lat = len(LAT_RE.findall(text))
+    total = cyr + heb + lat
+    return total >= 10 and cyr / total >= 0.4
+
+
+def _get_cached_translation(conn, h):
+    row = conn.execute(
+        "SELECT translation FROM translation_cache WHERE text_hash=?",
+        (h,)).fetchone()
+    return row[0] if row else None
+
+
+def _put_cached_translation(conn, h, translation):
+    conn.execute(
+        "INSERT OR REPLACE INTO translation_cache "
+        "(text_hash, source_lang, target_lang, translation, ts) "
+        "VALUES (?,?,?,?,?)",
+        (h, "ru", "iw", translation, datetime.now(timezone.utc).isoformat()))
+    conn.commit()
+
+
+def _translate_one(text, tries=3):
+    tr = _translator()
+    if tr is None:
+        return None
+    # Google's public endpoint occasionally 429s under bursts. Small backoff.
+    import time
+    for i in range(tries):
+        try:
+            return tr.translate(text[:4500])  # endpoint caps request size
+        except Exception as e:
+            if i == tries - 1:
+                print(f"[translate] gave up on {text[:40]!r}: "
+                      f"{e.__class__.__name__} {str(e)[:80]}")
+                return None
+            time.sleep(0.5 * (i + 1))
+    return None
+
+
+def translate_series(series):
+    """Return a Series of Hebrew translations aligned with `series`. Russian
+    rows get translated; non-Russian rows return empty strings. Repeat texts
+    are looked up once (via translation_cache) and answered from cache on
+    subsequent rows. Missing / failed translations are empty, never fatal."""
+    conn = _connect()
+    russian_texts = sorted({t for t in series if _is_russian(t)})
+    hashes = {t: _text_hash(t) for t in russian_texts}
+
+    # Load cached translations in a single pass
+    resolved = {}
+    for t in russian_texts:
+        h = hashes[t]
+        cached = _get_cached_translation(conn, h)
+        if cached is not None:
+            resolved[t] = cached
+    remaining = [t for t in russian_texts if t not in resolved]
+
+    if remaining:
+        from concurrent.futures import ThreadPoolExecutor
+        # 4 threads keeps us comfortably under Google's public rate window.
+        # Higher parallelism triggers 429s that _translate_one retries but
+        # eventually gives up on, leaving text_he empty for those rows.
+        with ThreadPoolExecutor(max_workers=4) as ex:
+            for t, out in zip(remaining, ex.map(_translate_one, remaining)):
+                if out:
+                    resolved[t] = out
+                    _put_cached_translation(conn, hashes[t], out)
+    conn.close()
+    return series.map(lambda t: resolved.get(t, "") if _is_russian(t) else "")
 
 
 def last_run():
