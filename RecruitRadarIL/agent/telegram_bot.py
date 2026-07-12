@@ -98,7 +98,14 @@ def send(chat_id, text):
         if text and "\n" in chunk:
             cut = chunk.rfind("\n")
             text, chunk = chunk[cut:] + text, chunk[:cut]
-        api("sendMessage", chat_id=chat_id, text=chunk)
+        r = api("sendMessage", chat_id=chat_id, text=chunk)
+        # Surface Telegram-side failures instead of dropping messages silently -
+        # e.g. 429 rate limit, blocked chat, or a bad chat_id. Printed to the
+        # workflow log so the failure is visible without inspecting the API.
+        if not r.get("ok"):
+            print(f"[send] telegram rejected: {r.get('error_code')} "
+                  f"{r.get('description')} (chat_id={chat_id}, "
+                  f"chunk_len={len(chunk)})")
 
 
 def _snippet(s, n=90):
