@@ -1,11 +1,11 @@
 name: RecruitRadar-IL digest
 
-# Runs the scoring pipeline in the cloud (no laptop needed) and pushes the
-# summary + top leads to your Telegram chat. Free for public repos.
+# Runs the scoring pipeline in the cloud (no laptop needed) and delivers the
+# new-leads CSV to your Telegram chat. Free for public repositories.
 #
 # Two ways it fires:
-#   • schedule   - automatically, twice a day (08:00 and 20:00 Israel time)
-#   • manually   - the "Run workflow" button on the Actions tab, which also
+#   * schedule   - automatically, twice a day (12:00 and 20:00 Israel time)
+#   * manually   - the "Run workflow" button on the Actions tab, which also
 #                  works from the GitHub mobile app
 #
 # Required repository secret:  TELEGRAM_BOT_TOKEN
@@ -18,11 +18,6 @@ on:
     # In winter (UTC+2) these shift to 11:00 and 19:00 Israel time.
     - cron: "0 9,17 * * *"
   workflow_dispatch:
-    inputs:
-      deep:
-        description: "Run the LLM mid-band pass (Groq). Leave true unless GROQ_API_KEY is unset."
-        type: boolean
-        default: true
 
 # Don't let two runs overlap (they share the same DB cache).
 concurrency:
@@ -76,11 +71,9 @@ jobs:
           TELEGRAM_API_ID: ${{ secrets.TELEGRAM_API_ID }}
           TELEGRAM_API_HASH: ${{ secrets.TELEGRAM_API_HASH }}
           TELETHON_SESSION: ${{ secrets.TELETHON_SESSION }}
-          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
         run: |
           for var in TELEGRAM_BOT_TOKEN BOT_OWNER_ID HASH_SALT \
-                    TELEGRAM_API_ID TELEGRAM_API_HASH TELETHON_SESSION \
-                    GROQ_API_KEY; do
+                    TELEGRAM_API_ID TELEGRAM_API_HASH TELETHON_SESSION; do
             value="${!var}"
             if [ -z "$value" ]; then
               echo "  $var: MISSING"
@@ -105,22 +98,9 @@ jobs:
           HASH_SALT: ${{ secrets.HASH_SALT }}
         run: python agent/collect_headless.py
 
-      - name: Run scan and push digest to Telegram
+      - name: Run scan and deliver digest to Telegram
         env:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           BOT_OWNER_ID: ${{ secrets.BOT_OWNER_ID }}
           HASH_SALT: ${{ secrets.HASH_SALT }}
-          # LF3 runs against Groq's free tier in the cloud. Get a key at
-          # console.groq.com, save it as the GROQ_API_KEY secret. Without it
-          # LF3 abstains gracefully and the digest still delivers.
-          LLM_PROVIDER: groq
-          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
-          GROQ_MODEL: llama-3.3-70b-versatile
-        run: |
-          # Scheduled runs have no `inputs.*` context, so default to --deep
-          # (Groq is fast and free-tier is plenty for a mid-band pass).
-          if [ "${{ inputs.deep }}" = "false" ]; then
-            python agent/cloud_digest.py
-          else
-            python agent/cloud_digest.py --deep
-          fi
+        run: python agent/cloud_digest.py

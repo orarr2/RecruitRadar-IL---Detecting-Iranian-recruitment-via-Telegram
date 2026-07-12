@@ -1,7 +1,7 @@
 # RecruitRadar-IL — Adaptive Detection & Discovery
 
-**Design document for the next iteration of the pipeline.**
-**Status:** approved for implementation. **Scope of this doc:** design only, no code.
+**Design document (historical) for the next iteration of the pipeline.**
+**Status:** partially implemented; the deferred-classification step (originally D2) was later removed by decision, so anything below that talks about a deep classifier on the mid-band no longer applies. The implemented pipeline is rules + IsolationForest + verdicts, fused by Snorkel, with a CSV digest delivered to Telegram covering only new-since-last-send leads. Discovery (D1) and the feedback loop (originally D3) are in place. **Scope of this doc:** design only, no code.
 
 ---
 

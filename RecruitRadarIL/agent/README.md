@@ -1,29 +1,34 @@
 # agent/ — Adaptive Detection & Discovery
 
-The optional autonomous layer of RecruitRadar-IL. It implements the design
-approved in [`../docs/DESIGN.md`](../docs/DESIGN.md) (Architecture A:
-deterministic pipeline + Snorkel) **without touching the baseline** — the
-main notebook and `run_offline.py` keep working exactly as before, and this
-folder can be ignored entirely.
+The optional layer of RecruitRadar-IL on top of the baseline. The main notebook
+and `run_offline.py` keep working exactly as before, and this folder can be
+ignored entirely. Related plan: [`../docs/DESIGN.md`](../docs/DESIGN.md) (the
+LLM layer originally described there was later removed by decision — the
+current pipeline is rules + IsolationForest + verdicts + Snorkel only).
 
 ## What it adds
 
 | Delta | Feature |
 |---|---|
 | **D1** | Channel discovery: mines already-collected messages for `@usernames` / `t.me/...` links, scores candidates by rule base-rate × cross-channel centrality, and proposes up to 20 per run. Nothing is collected until a human approves. |
-| **D2** | Tiered scoring: a **local** LLM (Ollama) classifies only the messages where the cheap detectors disagree or abstain. Responses are cached by `(sha256(text), prompt_version)` — re-runs on an unchanged corpus are free, and the cost of a run is always $0 because the model is local. |
-| **D3** | Closed feedback loop: rules, IsolationForest, the LLM and the analyst's own verdicts all become Labeling Functions; a Snorkel label model learns their accuracies from the data and emits `p_recruitment` per message. Verdicts persist, so the system sharpens with every review session. |
+| **D2** | Closed feedback loop: rules, IsolationForest and the analyst's own verdicts all become Labeling Functions; a Snorkel label model learns their accuracies from the data and emits `p_recruitment` per message. Verdicts persist, so the system sharpens with every review session. |
+| **D3** | CSV digest delivered to Telegram: each run ships one file with the leads that scored `p_recruitment >= 0.5` **and** were not shipped in any previous digest. Once a lead ships, it is recorded in `sent_leads` and never resurfaces. |
+
+**No LLM decides whether a message is recruitment.** No model is trained on
+message content. Scoring is entirely rule- and statistics-driven.
 
 ## Contents
 
 | File | Purpose |
 |---|---|
-| `AdaptiveRecruitRadar.ipynb` | The whole adaptive pipeline, end to end (sections A0–A11 map to milestones M0–M4 of the design). |
-| `pipeline.py` | The same pipeline as an importable headless engine (`run_pipeline`, `top_leads`, `list_proposals`, `approve_channel`, ...). Also a cron entry point: `python agent/pipeline.py [--deep]`. |
-| `telegram_bot.py` | A Telegram control bot: drive the whole thing from your phone (`/scan`, `/top`, `/approve`, ...). |
+| `AdaptiveRecruitRadar.ipynb` | The whole adaptive pipeline, end to end. |
+| `pipeline.py` | Importable headless engine (`run_pipeline`, `unsent_flagged`, `mark_sent`, `top_leads`, `list_proposals`, `approve_channel`, ...). Also a cron entry point: `python agent/pipeline.py`. |
+| `telegram_bot.py` | A Telegram control bot: `/scan` (delivers a CSV of new leads), `/top`, `/approve`, ... |
+| `cloud_digest.py` | The GitHub Actions entry point - one scan, one CSV, done. |
 | `annotator_app.py` | Streamlit UI for the analyst: review queue, channel-proposal approval, weekly metrics. |
+| `collect_headless.py` | Non-interactive collector (StringSession) for cloud runs. |
 | `requirements.txt` | Extra dependencies for this layer. |
-| `.env.example` | Optional configuration (model choice, budget, retention, bot token). |
+| `.env.example` | Optional configuration (retention, bot token). |
 
 ## Quickstart
 
@@ -31,10 +36,6 @@ folder can be ignored entirely.
 cd RecruitRadarIL
 python -m venv .venv && .venv\Scripts\activate     # or source .venv/bin/activate
 pip install -r agent/requirements.txt
-
-# optional - the local LLM layer (skipped gracefully when absent):
-#   install Ollama from https://ollama.com, then
-ollama pull llama3.2:3b        # or: ollama pull qwen2.5:7b
 
 jupyter notebook agent/AdaptiveRecruitRadar.ipynb   # run all cells
 streamlit run agent/annotator_app.py                # review the results
@@ -49,8 +50,7 @@ messages that are already in the DB.
 `telegram_bot.py` turns the pipeline into something you run and read entirely
 from the Telegram app on your phone — no public IP, no port forwarding. The bot
 uses long-polling (it reaches *out* to Telegram), so as long as this machine is
-on and online you can command it from anywhere. The phone is the remote control
-and inbox; the scoring still runs here, locally.
+on and online you can command it from anywhere.
 
 ```bash
 # 1. Create a bot: in Telegram, message @BotFather -> /newbot -> copy the token
@@ -65,9 +65,8 @@ Full step-by-step (Hebrew + English): [`TELEGRAM_SETUP.md`](TELEGRAM_SETUP.md).
 
 | Command | Does |
 |---|---|
-| `/scan` | Re-score the corpus (rules + appearance + label model + discovery). |
-| `/scan deep` | Same, but also run the local LLM on the undecided mid-band (slow on CPU). |
-| `/top [N]` | Top N leads by `p_recruitment` (default 10). |
+| `/scan` | Re-score the corpus and receive the new-leads CSV (marks them as sent). |
+| `/top [N]` | Quick text preview of top N flagged messages. Does not mark as sent. |
 | `/proposals` | Pending channel-discovery proposals. |
 | `/approve NAME` | Approve a proposed channel (appended to `channels_extra.txt`). |
 | `/reject NAME` | Reject a proposed channel. |
@@ -75,54 +74,50 @@ Full step-by-step (Hebrew + English): [`TELEGRAM_SETUP.md`](TELEGRAM_SETUP.md).
 
 Only `BOT_OWNER_ID` can use the bot; messages from anyone else are ignored.
 
-**Twice-a-day automatic push.** For a proactive digest (rather than pulling with
-`/scan`), schedule the headless engine with Windows Task Scheduler:
+**Twice-a-day automatic push.** The cloud workflow already does this on the
+default schedule (see [`CLOUD_SETUP.md`](CLOUD_SETUP.md)). If you prefer a
+local schedule instead, wire `python agent/cloud_digest.py` into Windows Task
+Scheduler with *"Wake the computer to run this task"* so it fires even when
+the laptop is asleep. A shut-down machine can't run it — that's when the cloud
+workflow (or a Raspberry Pi) is the next step.
 
-```
-Program:   python
-Arguments: agent/pipeline.py
-Start in:  <full path to RecruitRadarIL>
-Trigger:   daily, repeat every 12 hours
-```
+## The loop
 
-Tick *"Wake the computer to run this task"* so it fires even when the laptop is
-asleep (a closed lid). A shut-down machine can't run it — that's when an
-always-on box (e.g. a Raspberry Pi running the same `pipeline.py`) is the next
-step. The engine only writes the exports/DB; pair it with a one-line bot push if
-you want the summary to land in Telegram automatically.
+1. Collect (main notebook or `collect_headless.py`)
+2. Score (`pipeline.py`)
+3. Review (annotator UI or the CSV in your bot chat)
+4. Your verdicts land in `data/verdicts.jsonl`; `git push` and they enter the
+   next cloud run as LF4
+5. Repeat
 
-## The weekly loop
-
-1. Collect (main notebook) → 2. score (this notebook) → 3. review
-(annotator) → 4. your verdicts re-enter the next fit as LF4 → repeat.
-Metrics for each run are appended to `data/metrics_weekly.jsonl`; targets
-live in DESIGN section 9.
+Metrics for each run are appended to `data/metrics_weekly.jsonl`.
 
 ## Data artifacts (all local, all under `data/` and `exports/`)
 
 | Artifact | What it holds |
 |---|---|
-| `lf_votes`, `llm_cache`, `snorkel_labels`, `channel_proposals` (SQLite) | Vote matrix, cached LLM output, fitted probabilities, discovery candidates. |
-| `data/verdicts.jsonl` | Append-only analyst decisions (LF4 input). |
-| `data/agent_trace.jsonl` | Append-only step log — every automated decision is reconstructible from disk (N4). |
+| `lf_votes`, `snorkel_labels`, `channel_proposals`, `sent_leads` (SQLite) | Vote matrix, fitted probabilities, discovery candidates, per-run "already delivered" set. |
+| `data/verdicts.jsonl` | Append-only analyst decisions (LF4 input). Tracked in git so cloud runs see it. |
+| `data/agent_trace.jsonl` | Append-only step log — every automated decision is reconstructible from disk. |
 | `data/metrics_weekly.jsonl` | One metrics row per run. |
-| `exports/review_queue_adaptive_*.csv`, `exports/channel_proposals_*.md` | Ranked queue and proposal digest. |
+| `exports/review_queue_adaptive_*.csv`, `exports/channel_proposals_*.md` | Ranked queue and proposal digest, local only. |
 
 ## Configuration
 
-Copy `.env.example` to `.env` in this folder. Notable knobs: `OLLAMA_MODEL`
-(`llama3.2:3b` default, `qwen2.5:7b` for better multilingual), `MAX_LLM_CALLS`
-(budget ceiling — the layer-2 pass aborts rather than overruns), and
-`RETENTION_DAYS` (default 90; messages older than that are dropped each run).
+Copy `.env.example` to `.env` in this folder. Notable knobs: `RETENTION_DAYS`
+(default 90; messages older than that are dropped each run), plus the bot
+token and owner id.
 
 ## Troubleshooting
 
-- **Ollama not installed / not running** — LF3 abstains, everything else
-  works. The affected rows carry `llm_missing = 1`.
-- **snorkel won't install** (it pulls in torch) — the notebook automatically
-  falls back to a transparent weighted vote and says so.
-- **Empty review queue in the annotator** — run the notebook first; the
+- **snorkel won't install** (it pulls in torch) — the pipeline automatically
+  falls back to a transparent weighted vote and says so in the metrics.
+- **Empty review queue in the annotator** — run the pipeline first; the
   annotator only reads what the pipeline wrote.
+- **Cloud digest silent** — that's the intended behavior when there are no
+  new leads. Check the "Run scan and deliver digest to Telegram" step in the
+  Actions log; it prints `Nothing new to deliver` when the run genuinely
+  produced no fresh leads.
 
 ## Ground rules (inherited, unchanged)
 

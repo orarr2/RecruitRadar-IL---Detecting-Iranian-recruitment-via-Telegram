@@ -16,7 +16,6 @@ Three tabs:
 Everything shown here is a lead for review, not a conclusion.
 """
 
-import hashlib
 import json
 import os
 import sqlite3
@@ -55,7 +54,7 @@ conn = get_conn()
 
 def load_queue():
     q = pd.read_sql_query(
-        """SELECT s.channel, s.msg_id, s.p_recruitment, s.llm_missing,
+        """SELECT s.channel, s.msg_id, s.p_recruitment,
                   m.category, m.date, m.sender_hash, m.text
            FROM snorkel_labels s JOIN messages m
              ON s.channel = m.channel AND s.msg_id = m.msg_id
@@ -92,22 +91,9 @@ def save_verdict(channel, msg_id, verdict, note):
         }, ensure_ascii=False) + "\n")
 
 
-def llm_rationale(text):
-    h = hashlib.sha256((text or "").encode("utf-8")).hexdigest()
-    row = conn.execute(
-        "SELECT response_json FROM llm_cache WHERE text_hash=? "
-        "ORDER BY ts DESC LIMIT 1", (h,)).fetchone()
-    if not row:
-        return None
-    try:
-        return json.loads(row[0])
-    except json.JSONDecodeError:
-        return None
-
-
 VOTE_LABEL = {1: "recruitment", 0: "not recruitment", -1: "abstain", None: "-"}
 LF_DISPLAY = [("lf_rules", "rules"), ("lf_iso", "appearance"),
-              ("lf_llm", "llm"), ("lf_verdicts", "verdicts")]
+              ("lf_verdicts", "verdicts")]
 
 tab_queue, tab_channels, tab_metrics = st.tabs(
     ["Review queue", "Channel proposals", "Metrics"])
@@ -141,13 +127,6 @@ with tab_queue:
                         f"{name}: **{VOTE_LABEL.get(getattr(r, col, None), '-')}**"
                         for col, name in LF_DISPLAY if hasattr(r, col))
                     st.caption(votes)
-                    rat = llm_rationale(r.text)
-                    if rat and rat.get("rationale_short"):
-                        st.caption(
-                            f"llm: {rat.get('rationale_short')} "
-                            f"(confidence {rat.get('confidence', '-')}, "
-                            f"payment {rat.get('payment_mentioned', '-')}, "
-                            f"contact {rat.get('contact_method', '-')})")
                 with right:
                     note = st.text_input("note (optional)", key=f"note_{key}")
                     c1, c2, c3 = st.columns(3)

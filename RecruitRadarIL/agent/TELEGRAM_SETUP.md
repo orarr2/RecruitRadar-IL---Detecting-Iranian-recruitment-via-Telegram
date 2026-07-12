@@ -53,21 +53,21 @@ forwarding.
 
 | פקודה | מה עושה |
 |---|---|
-| `/scan` | סורק ומדרג מחדש (מהיר, בלי LLM) |
-| `/scan deep` | כולל את ה-LLM המקומי על ההודעות הלא-מוכרעות (איטי על CPU) |
-| `/top 10` | 10 ההודעות החשודות ביותר |
+| `/scan` | סורק ומדרג מחדש, ושולח **קובץ CSV** עם ההודעות החשודות החדשות בלבד (שלא נשלחו בעבר) |
+| `/top 10` | תצוגה מקדימה טקסטואלית של 10 החשודות המובילות (לא מסמן כ-"נשלח") |
 | `/proposals` | ערוצים חדשים שהתגלו וממתינים לאישור |
 | `/approve שם_ערוץ` | מאשר ערוץ (נכנס לרשימת האיסוף בפעם הבאה) |
 | `/reject שם_ערוץ` | דוחה ערוץ |
 | `/status` | סיכום הריצה האחרונה |
 | `/help` | רשימת הפקודות |
 
+הודעה שנשלחה ב-CSV אחד לא תישלח שוב לעולם - הרצה הבאה תכלול רק **חדשות** מאז.
+
 ### אם משהו לא עובד
 
 - `TELEGRAM_BOT_TOKEN is not set` - לא הכנסת טוקן ל-`agent/.env`.
 - `Telegram rejected the token` - הטוקן שגוי; בדוק שהעתקת אותו במלואו מ-BotFather.
 - הבוט לא עונה - ודא שהסקריפט עדיין רץ במחשב ושהמחשב מחובר לאינטרנט.
-- `/scan deep` איטי מאוד - נורמלי על CPU; השתמש ב-`/scan` הרגיל.
 
 ### חשוב לזכור
 
@@ -124,21 +124,22 @@ remote. It works from anywhere while the computer is on and online.
 
 | Command | Does |
 |---|---|
-| `/scan` | Re-score the corpus (fast, no LLM). |
-| `/scan deep` | Also run the local LLM on the undecided mid-band (slow on CPU). |
-| `/top 10` | Top 10 leads by `p_recruitment`. |
+| `/scan` | Re-score and deliver a **CSV** of the new flagged leads (marks them as sent so they never re-appear). |
+| `/top 10` | Text preview of the top 10 flagged messages. Does NOT mark them as sent. |
 | `/proposals` | Pending channel-discovery proposals. |
 | `/approve NAME` | Approve a proposed channel. |
 | `/reject NAME` | Reject a proposed channel. |
 | `/status` | Summary of the last run. |
 | `/help` | Command list. |
 
+A message shipped in a CSV is never shipped again - the next run only carries
+what's new since the previous delivery.
+
 ### Troubleshooting
 
 - `TELEGRAM_BOT_TOKEN is not set` - no token in `agent/.env`.
 - `Telegram rejected the token` - wrong token; re-copy it in full from BotFather.
 - Bot silent - make sure the script is still running and the machine is online.
-- `/scan deep` very slow - normal on CPU; use plain `/scan`.
 
 ### Remember
 
