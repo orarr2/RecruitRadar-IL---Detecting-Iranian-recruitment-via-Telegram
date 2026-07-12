@@ -14,8 +14,9 @@ name: RecruitRadar-IL digest
 
 on:
   schedule:
-    # cron is in UTC. 05:00 and 17:00 UTC = 08:00 and 20:00 Israel (UTC+3, DST).
-    - cron: "0 5,17 * * *"
+    # cron is in UTC. 09:00 and 17:00 UTC = 12:00 and 20:00 Israel (UTC+3, DST).
+    # In winter (UTC+2) these shift to 11:00 and 19:00 Israel time.
+    - cron: "0 9,17 * * *"
   workflow_dispatch:
     inputs:
       deep:
