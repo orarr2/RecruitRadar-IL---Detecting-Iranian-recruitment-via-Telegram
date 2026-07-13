@@ -14,9 +14,12 @@ name: RecruitRadar-IL digest
 
 on:
   schedule:
-    # cron is in UTC. 09:00 and 17:00 UTC = 12:00 and 20:00 Israel (UTC+3, DST).
-    # In winter (UTC+2) these shift to 11:00 and 19:00 Israel time.
-    - cron: "0 9,17 * * *"
+    # cron is in UTC. GitHub's scheduler drops or delays runs pinned to the
+    # top of the hour (:00) because everyone piles into that bucket. Using a
+    # non-round minute (:13) makes scheduled firing dramatically more
+    # reliable. 09:13 and 17:13 UTC = 12:13 and 20:13 Israel time (summer,
+    # UTC+3, DST). Winter (UTC+2): 11:13 and 19:13 Israel time.
+    - cron: "13 9,17 * * *"
   workflow_dispatch:
     inputs:
       reset_sent:
