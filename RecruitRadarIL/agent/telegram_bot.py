@@ -171,17 +171,18 @@ def build_digest_caption(summary, n_new):
             f"verdicts so far: {summary['n_verdicts']}")
 
 
-# Column order optimised for scanning: score first (so the reader eyes it
-# immediately), then when/where, then the Hebrew translation (populated when
-# the original was Russian), then the original text, then trailing metadata.
-REPORT_COLS = ["p_recruitment", "date", "channel", "text_he",
+# Column order optimised for scanning: row number first so a reader can
+# refer to a specific lead by "#7"; then score (immediate risk cue); then
+# when/where; then the Hebrew translation (populated when the original was
+# Russian); then the original text; then trailing metadata.
+REPORT_COLS = ["#", "p_recruitment", "date", "channel", "text_he",
                "text", "category", "rule_hits", "sender_hash", "msg_id"]
 
 # Column widths (in Excel character units) tuned for phone-viewer readability.
 # Text columns get generous width + wrap_text so long messages render as
 # multi-line paragraphs inside the cell instead of an unreadable strip.
 COL_WIDTHS = {
-    "p_recruitment": 8,   "date": 20,   "channel": 20,
+    "#": 5,               "p_recruitment": 8,   "date": 20,   "channel": 20,
     "text_he": 55,        "text": 55,   "category": 14,
     "rule_hits": 30,      "sender_hash": 18,   "msg_id": 10,
 }
@@ -202,8 +203,11 @@ def build_xlsx_bytes(df):
     from openpyxl.styles import Alignment, Font, PatternFill, Border, Side
     from openpyxl.utils import get_column_letter
 
-    df = df.copy()
+    df = df.copy().reset_index(drop=True)
     df["text_he"] = pipeline.translate_series(df["text"])
+    # 1-based row number so the reader can say "look at lead #7" and everyone
+    # opens the same row - Excel's own row numbers include the header row.
+    df["#"] = range(1, len(df) + 1)
     for col in REPORT_COLS:
         if col not in df.columns:
             df[col] = ""
@@ -237,9 +241,11 @@ def build_xlsx_bytes(df):
         ws.append([str(row[c]) if row[c] is not None else "" for c in REPORT_COLS])
 
     # Row styling: fill by score, wrap all text cells, thin borders throughout.
+    # p_recruitment lives in column 2 now (column 1 is the row number).
+    p_col = REPORT_COLS.index("p_recruitment") + 1
     for r in range(2, ws.max_row + 1):
         try:
-            p = float(ws.cell(row=r, column=1).value)
+            p = float(ws.cell(row=r, column=p_col).value)
         except (TypeError, ValueError):
             p = 0.0
         row_fill = high_fill if p >= 0.8 else (mid_fill if p >= 0.5 else None)
@@ -259,7 +265,7 @@ def build_xlsx_bytes(df):
 
     # Format p_recruitment as 3-decimal number for a clean glance.
     for r in range(2, ws.max_row + 1):
-        cell = ws.cell(row=r, column=1)
+        cell = ws.cell(row=r, column=p_col)
         try:
             cell.value = float(cell.value)
             cell.number_format = "0.000"

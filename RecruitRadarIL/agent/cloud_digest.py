@@ -73,14 +73,24 @@ def main():
     n_new = len(fresh)
     print(f"Unsent flagged: {n_new}.")
 
-    if n_new == 0:
-        print("Nothing new to deliver - staying silent.")
-        return
-
     chat_id = tb.OWNER or discover_chat_id()
     if chat_id is None:
         print("No BOT_OWNER_ID and nobody messaged the bot recently, so there is "
               "no chat to deliver to. Skipping.")
+        return
+
+    if n_new == 0:
+        # Explicit heartbeat instead of silence, so a scheduled run never
+        # looks silently broken to the recipient. Cheap - one plain-text
+        # sendMessage, no file attachment.
+        tb.send(chat_id, f"RecruitRadar-IL digest\n"
+                         f"run {summary['run_id']}\n"
+                         f"No new leads since the previous digest.\n"
+                         f"{summary['n_messages']} messages scanned across "
+                         f"{summary['n_channels']} channels "
+                         f"({summary['n_flagged']} flagged total, all "
+                         f"already delivered).")
+        print("Delivered a 'no new leads' heartbeat.")
         return
 
     delivered = tb.deliver_digest(chat_id, summary)

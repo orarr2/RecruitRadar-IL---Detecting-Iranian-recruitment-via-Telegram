@@ -65,21 +65,20 @@ DAYS_BACK       = int(os.getenv("COLLECT_DAYS_BACK", "14"))
 MAX_PER_CHANNEL = int(os.getenv("COLLECT_MAX_PER_CHANNEL", "500"))
 SLEEP_BETWEEN   = float(os.getenv("COLLECT_SLEEP", "0.05"))
 
-# Seed registry - a SNAPSHOT of the notebook's CHANNELS (section 3). The live
-# source of truth for additions is channels_extra.txt; keep new approved
-# channels there rather than editing this list.
+# Seed registry - pruned to what Telegram actually accepts. Entries that came
+# back not_occupied / private_or_forbidden / UsernameInvalidError during the
+# per-channel diagnostic have been removed; the ones with confirmed activity
+# stay, and the "no_new_messages" (existing but quiet within the window) ones
+# stay too - they may pick up on any given collect.
+# The live source of truth for additions is channels_extra.txt; keep new
+# approved channels there rather than editing this list.
 SEED_CHANNELS = [
     ("israjobs", "jobs_it"), ("jobs_in_israel", "jobs_il"),
     ("ConnectJLMJobs", "jobs_il"), ("BROOTTO_Jobs", "jobs_il"),
     ("rabotaisraeli", "jobs_il"), ("rabotacoil", "jobs_il"),
-    ("rabota_za_granicey", "jobs_abroad"), ("jobs_abroad_il", "jobs_abroad"),
-    ("freelance_il", "freelance"), ("freelancim", "freelance"),
-    ("perevodchiki_rabota", "translation"), ("tsalamim_il", "photo_video"),
-    ("shlichuyot_il", "field_work"), ("avoda_baregel", "field_work"),
-    ("ezra_hadadit", "help_offers"), ("tiyulim_israel", "trips_travel"),
+    ("rabota_za_granicey", "jobs_abroad"),
+    ("ezra_hadadit", "help_offers"),
     ("trempim_israel", "rides"), ("izrail_avito", "marketplace"),
-    ("yad2_il", "yad2"), ("kupi_proday_israel", "marketplace"),
-    ("rahitim_yad2", "furniture"), ("crypto_exchange_il", "crypto_exchange"),
     ("obmen_valut_israel", "crypto_exchange"),
 ]
 

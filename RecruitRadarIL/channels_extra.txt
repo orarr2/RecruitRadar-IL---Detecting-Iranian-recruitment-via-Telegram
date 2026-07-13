@@ -41,10 +41,10 @@ hitechil,              jobs_it
 irudate,            help_offers
 meetingforlove,     help_offers
 
-# Marketplace / used-item classifieds (recruitment ads try to hide alongside
-# ordinary buy/sell posts).
-useditemsonsale,    marketplace
-
+# Marketplace / used-item classifieds - the tgstat candidate here turned out
+# to fail Telegram's UsernameInvalid check, so removed. Add here when a real
+# active Israeli marketplace channel is confirmed.
+#
 # Note: no strong tgstat hits for active Israeli trempim / photo-video /
 # translation channels beyond those already in the seed list. Add more here
 # as they surface via /proposals or manual research - keep the rule "no news
