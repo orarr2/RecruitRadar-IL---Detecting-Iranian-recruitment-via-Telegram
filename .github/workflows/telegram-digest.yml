@@ -4,7 +4,7 @@ name: RecruitRadar-IL digest
 # new-leads CSV to your Telegram chat. Free for public repositories.
 #
 # Two ways it fires:
-#   * schedule   - automatically, twice a day (12:00 and 20:00 Israel time)
+#   * schedule   - automatically, once a day at ~12:00 Israel time
 #   * manually   - the "Run workflow" button on the Actions tab, which also
 #                  works from the GitHub mobile app
 #
@@ -14,11 +14,10 @@ name: RecruitRadar-IL digest
 
 on:
   schedule:
-    # cron is in UTC. GitHub's scheduler drops or delays runs pinned to the
-    # top of the hour (:00) because everyone piles into that bucket. Any
-    # non-round minute avoids that. 08:45 and 16:45 UTC = 11:45 and 19:45
-    # Israel time (summer, UTC+3, DST). Winter (UTC+2): 10:45 and 18:45.
-    - cron: "45 8,16 * * *"
+    # cron is in UTC. Once a day, as close to 12:00 Israel time as possible
+    # without hitting the :00 minute that GitHub's scheduler drops. 09:05 UTC
+    # = 12:05 Israel time (summer, UTC+3, DST). Winter (UTC+2): 11:05 IL.
+    - cron: "5 9 * * *"
   workflow_dispatch:
     inputs:
       reset_sent:
